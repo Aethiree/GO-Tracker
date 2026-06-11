@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LE Tracker — Pickering ⇄ Union</title>
+<meta name="theme-color" content="#0C1A12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LE Tracker">
+<style>
+  :root{
+    --green:#00703C; --green-dk:#0B5B33; --board:#0C1A12; --board-line:#1D3527;
+    --led:#9FE6A0; --amber:#FFB81C; --bg:#EDF0EB; --card:#FFF;
+    --ink:#15211A; --sub:#5C6B61; --line:#DDE3DC; --red:#C8442C;
+    --mono:"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--board);font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:var(--ink)}
+  #app{max-width:460px;margin:0 auto;background:var(--bg);min-height:100vh;padding-bottom:max(32px, env(safe-area-inset-bottom))}
+  .board{background:var(--board);padding:calc(14px + env(safe-area-inset-top)) 18px 22px;border-bottom:4px solid var(--green)}
+  .row{display:flex;justify-content:space-between;align-items:center}
+  .gobadge{background:var(--green);color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:3px;letter-spacing:1px}
+  .linename{color:#BFD4C3;font-size:12px;letter-spacing:2.5px;font-weight:600}
+  .live{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:2px;font-weight:700}
+  .dot{width:7px;height:7px;border-radius:99px;animation:pulse 1.6s infinite}
+  .eyebrow{color:#7E957F;font-size:11px;letter-spacing:1.5px}
+  .clock{font-family:var(--mono);color:var(--led);font-size:34px;font-weight:600;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:0 0 14px rgba(159,230,160,.35)}
+  .dir{color:#E8F2E6;font-size:15px;font-weight:700}
+  .hero{margin-top:16px;border-top:1px solid var(--board-line);padding-top:14px}
+  .count{font-family:var(--mono);color:var(--amber);font-size:42px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(255,184,28,.4)}
+  .heroline{color:#E8F2E6;font-size:14px;margin-top:2px}
+  .heropos{font-size:13px;margin-top:5px;font-family:var(--mono)}
+  .strip{position:relative;height:34px;margin-top:18px}
+  .track{position:absolute;top:15px;left:0;right:0;border-top:2px dashed var(--board-line)}
+  .stn{position:absolute;top:11px;transform:translateX(-50%)}
+  .stnlabels{display:flex;justify-content:space-between;margin-top:2px}
+  .stnlabels span{font-size:8.5px;letter-spacing:.5px;text-align:center}
+  .train{position:absolute;top:2px;transform:translateX(-50%);transition:left 1s linear}
+  .train i{display:block;width:14px;height:14px;border-radius:99px;background:var(--amber);border:2.5px solid #0C1A12;outline:1.5px solid var(--amber);animation:glow 2s infinite}
+  .heronote{color:#9DB7A0;font-size:10.5px;text-align:center;margin-top:6px;font-family:var(--mono)}
+  .tabs{display:flex;gap:8px;padding:14px 16px 4px}
+  .tabs button{flex:1;padding:11px 6px;border-radius:10px;cursor:pointer;font-weight:700;font-size:13.5px;transition:all .15s;font-family:inherit}
+  .tab-on{border:1.5px solid var(--green);background:var(--green);color:#fff}
+  .tab-off{border:1.5px solid var(--line);background:var(--card);color:var(--sub)}
+  .list{padding:10px 16px 0;display:flex;flex-direction:column;gap:9px}
+  .listhead{display:flex;justify-content:space-between;align-items:center;padding:2px 2px 0}
+  .listhead .l{font-size:11px;letter-spacing:1.5px;color:var(--sub);font-weight:700}
+  .listhead .r{font-size:11px;color:var(--sub)}
+  .pastbtn{border:1px dashed var(--line);background:transparent;color:var(--sub);font-size:12px;font-weight:700;padding:9px;border-radius:10px;cursor:pointer;font-family:inherit}
+  .trip{background:var(--card);border-radius:14px;padding:13px 14px;cursor:pointer;border:1px solid var(--line);box-shadow:0 1px 3px rgba(21,33,26,.05);transition:border-color .15s}
+  .trip.next{border:1.5px solid var(--green);box-shadow:0 4px 16px rgba(0,112,60,.12)}
+  .trip.open{border:1.5px solid var(--amber);box-shadow:0 4px 16px rgba(0,112,60,.12)}
+  .trip.faded{opacity:.55}
+  .t-time{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .t-time small{font-size:11px;color:var(--sub);margin-left:3px;font-weight:600}
+  .t-sub{font-size:10.5px;color:var(--sub);font-weight:600}
+  .chip{font-size:9.5px;font-weight:800;letter-spacing:1px;padding:4px 8px;border-radius:99px;white-space:nowrap}
+  .delay{font-size:9.5px;font-weight:800;letter-spacing:.5px;padding:4px 7px;border-radius:99px;white-space:nowrap}
+  .caret{color:var(--sub);font-size:12px;transition:transform .15s;display:inline-block}
+  .caret.r{transform:rotate(90deg)}
+  .t-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--bg);font-size:12px}
+  .t-foot .pos{font-family:var(--mono);font-weight:600}
+  .tl{margin-top:12px;padding-top:12px;border-top:1px solid var(--bg)}
+  .tl-chip{font-size:12px;font-weight:700;margin-bottom:10px;display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:99px}
+  .tl-row{display:flex;align-items:center;gap:12px}
+  .tl-dotcol{width:16px;display:flex;justify-content:center}
+  .tl-name{flex:1;display:flex;justify-content:space-between;align-items:baseline}
+  .tl-conn{display:flex;align-items:stretch;gap:12px;min-height:16px}
+  .tl-here{display:flex;align-items:center;gap:7px}
+  .tl-here b{font-size:11.5px;font-weight:800;color:#8A6510;letter-spacing:.3px}
+  .footer{padding:18px 16px 0}
+  .gtbtn{display:block;text-align:center;background:var(--green);color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:13px;border-radius:12px}
+  .previews{margin-top:12px;display:flex;justify-content:center;gap:8px;align-items:center;flex-wrap:wrap}
+  .previews button{font-size:11px;font-weight:700;padding:5px 10px;border-radius:99px;cursor:pointer;font-family:inherit}
+  .disclaimer{font-size:10.5px;color:var(--sub);text-align:center;line-height:1.5;margin-top:10px;padding-bottom:8px}
+  .empty{color:#BFD4C3;font-size:14px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,184,28,.55)}70%{box-shadow:0 0 0 9px rgba(255,184,28,0)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+// ============ GO LAKESHORE EAST — WEEKDAY TIMETABLE (fallback) + LIVE API ============
+const NAMES={OSH:"Oshawa",WHI:"Whitby",AJX:"Ajax",PIC:"Pickering",RGH:"Rouge Hill",GUI:"Guildwood",EGL:"Eglinton",SCA:"Scarborough",DAN:"Danforth",UNI:"Union"};
+const COORD={OSH:[43.8708,-78.8847],WHI:[43.8648,-78.9380],AJX:[43.8484,-79.0416],PIC:[43.8311,-79.0857],RGH:[43.7802,-79.1302],GUI:[43.7550,-79.1980],EGL:[43.7394,-79.2322],SCA:[43.7163,-79.2563],DAN:[43.6863,-79.3025],UNI:[43.6456,-79.3795]};
+const WBS=["OSH","WHI","AJX","PIC","RGH","GUI","EGL","SCA","DAN","UNI"];
+const EBS=["UNI","DAN","SCA","EGL","GUI","RGH","PIC"];
+const WB_A=[0,5,13,18,25,33,38,43,49,63], WB_B=[0,5,13,18,26,34,39,44,50,64];
+const EB_P=[0,12,18,23,28,35,43], EB_R=[0,13,20,25,29,36,44];
+const toMin=s=>{const[a,b]=s.split(":").map(Number);return a*60+b};
+const mk=(id,base,off,stn)=>({id,stops:off.map((o,i)=>({code:stn[i],t:toMin(base)+o}))});
+
+const TO_UNION=[
+ ...[["9005","05:03"],["9205","05:33"],["9007","06:08"],["9207","06:38"],["9307","06:53"],["9009","07:08"],["9109","07:23"],["9209","07:38"],["9309","07:53"]].map(([i,t])=>mk(i,t,WB_B,WBS)),
+ mk("9609","07:35",[0,8,13,21,29,34,39,45,59],WBS.slice(1)),
+ ...[["9011","08:09"],["9211","08:39"],["9013","09:09"],["9213","09:39"],["9015","10:09"],["9215","10:39"],["9017","11:09"],["9217","11:39"],["9019","12:09"],["9219","12:39"],["9021","13:09"],["9221","13:39"],["9023","14:09"],["9123","14:24"],["9223","14:39"],["9323","14:54"],["9025","15:09"],["9125","15:24"],["9225","15:39"],["9325","15:54"],["9027","16:09"],["9127","16:24"],["9227","16:39"],["9029","17:09"],["9229","17:39"],["9031","18:09"],["9231","18:39"],["9033","19:09"],["9233","19:39"],["9035","20:09"],["9235","20:39"],["9037","21:09"],["9237","21:39"],["9039","22:09"],["9239","22:39"],["9041","23:09"],["9241","23:39"]].map(([i,t])=>mk(i,t,WB_A,WBS)),
+];
+const TO_PIC=[
+ ...[["9004","06:05"],["9204","06:35"],["9006","07:05"],["9206","07:39"],["9008","08:09"],["9208","08:39"],["9010","09:05"],["9310","09:50"],["9112","10:20"],["9312","10:50"],["9114","11:20"],["9314","11:50"],["9116","12:20"],["9316","12:50"],["9118","13:20"],["9318","13:50"],["9120","14:20"],["9320","14:50"]].map(([i,t])=>mk(i,t,EB_P,EBS)),
+ ...[["9122","15:20"],["9322","15:50"],["9024","16:05"],["9124","16:20"],["9224","16:35"],["9324","16:50"],["9026","17:05"],["9126","17:20"],["9226","17:35"],["9326","17:50"],["9128","18:20"],["9328","18:50"],["9130","19:20"]].map(([i,t])=>mk(i,t,EB_R,EBS)),
+ ...[["9330","19:50"],["9032","20:20"],["9332","20:50"],["9134","21:20"],["9334","21:50"],["9136","22:20"],["9336","22:50"],["9138","23:22"],["9338","23:50"]].map(([i,t])=>mk(i,t,EB_P,EBS)),
+];
+
+// ============ LIVE DATA — Metrolinx GO Open Data API ============
+const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
+const DEMO_KEY="30024739"; // Metrolinx's published documentation key — replace with your own free key in Settings
+const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
+const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
+const LIVE={ok:false,updated:0,delays:{},pos:{},err:"connecting…"};
+let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
+
+async function fetchJson(url){
+  const tried=new Set();
+  for(const p of [proxyIdx,0,1,2]){
+    if(tried.has(p))continue; tried.add(p);
+    try{
+      const u=PROXIES[p]?PROXIES[p]+encodeURIComponent(url):url;
+      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),8000);
+      const r=await fetch(u,{cache:"no-store",signal:ctrl.signal});
+      clearTimeout(tm);
+      if(!r.ok)throw new Error("http "+r.status);
+      const j=await r.json();
+      proxyIdx=p; try{localStorage.setItem("le_proxy",String(p))}catch(e){}
+      return j;
+    }catch(e){/* try next route */}
+  }
+  throw new Error("unreachable");
+}
+
+const parseApiTime=s=>{ // "2026-06-10 07:26:00" (America/Toronto, same as device for local use)
+  if(!s)return null;
+  const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if(!m)return null;
+  return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)).getTime();
+};
+
+function harvestVehicles(o,out){
+  if(!o||typeof o!=="object")return;
+  if(Array.isArray(o)){for(const x of o)harvestVehicles(x,out);return}
+  if(o.Latitude!==undefined&&o.Longitude!==undefined)out.push(o);
+  for(const k in o)harvestVehicles(o[k],out);
+}
+
+async function refreshLive(){
+  if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";render();return}
+  const key=getKey();
+  const results=await Promise.allSettled([
+    fetchJson(`${API_BASE}/Stop/NextService/PIN?key=${key}`),
+    fetchJson(`${API_BASE}/Stop/NextService/UN?key=${key}`),
+    fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
+  ]);
+  let any=false;
+  const delays={...LIVE.delays};
+  for(const res of results.slice(0,2)){
+    if(res.status!=="fulfilled")continue;
+    const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
+    for(const L of lines){
+      if(String(L.LineCode||"").toUpperCase()!=="LE")continue;
+      const trip=String(L.TripNumber||"").replace(/\D/g,"");
+      const sch=parseApiTime(L.ScheduledDepartureTime);
+      const comp=parseApiTime(L.ComputedDepartureTime)||sch;
+      if(trip&&sch!=null){delays[trip]=Math.round((comp-sch)/60000);any=true;}
+    }
+  }
+  const pos={};
+  if(results[2].status==="fulfilled"){
+    const v=[];harvestVehicles(results[2].value,v);
+    for(const t of v){
+      const trip=String(t.TripNumber||t.TripName||t.Trip||"").replace(/\D/g,"");
+      const lc=String(t.LineCode||t.RouteNumber||t.Line||"").toUpperCase();
+      if(trip&&/^9\d{3}$/.test(trip)&&(lc===""||lc.includes("LE"))){
+        const lat=+t.Latitude, lon=+t.Longitude;
+        if(isFinite(lat)&&isFinite(lon)&&lat>43&&lat<44.2&&lon<-78&&lon>-80){pos[trip]={lat,lon};any=true;}
+      }
+    }
+  }
+  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.err="";}
+  else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
+  else{LIVE.ok=false;LIVE.err="no LE data returned";}
+  render();
+}
+
+// project a GPS fix onto a sequence of station coordinates → {frac, segIdx, segT, km}
+function geoProject(codes,lat,lon){
+  const k=Math.cos(43.75*Math.PI/180);
+  const pts=codes.map(c=>[COORD[c][1]*k,COORD[c][0]]);
+  const p=[lon*k,lat];
+  const cum=[0];
+  for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  let best=null;
+  for(let i=0;i<pts.length-1;i++){
+    const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay;
+    const len2=dx*dx+dy*dy;
+    let t=len2?((p[0]-ax)*dx+(p[1]-ay)*dy)/len2:0; t=Math.max(0,Math.min(1,t));
+    const d=Math.hypot(p[0]-(ax+t*dx),p[1]-(ay+t*dy));
+    if(!best||d<best.d)best={d,segIdx:i,segT:t,frac:(cum[i]+t*(cum[i+1]-cum[i]))/cum[cum.length-1]};
+  }
+  best.km=best.d*111; // deg → km approx
+  return best;
+}
+
+// ============ schedule helpers ============
+const pad=n=>String(n).padStart(2,"0");
+const fmt12=m=>{const h=Math.floor(m/60)%24,mm=Math.round(m%60);return `${h%12===0?12:h%12}:${pad(mm)}`};
+const ampm=m=>Math.floor(m/60)%24<12?"AM":"PM";
+const cd=mins=>{const w=Math.floor(mins),s=Math.floor((mins-w)*60);return `${w}:${pad(s)}`};
+
+function analyze(trip,originCode,destCode,now,delayMin,gps){
+  const dl=delayMin||0;
+  const st=trip.stops.map(s=>({code:s.code,t:s.t+dl,sched:s.t}));
+  const origin=st.find(s=>s.code===originCode)||st[0];
+  const dest=st.find(s=>s.code===destCode)||st[st.length-1];
+  const first=st[0],last=st[st.length-1];
+  let phase,pos,segIdx=-1,segFrac=0,liveGps=false;
+
+  if(gps){ // real position from the API
+    const codes=st.map(s=>s.code);
+    const pr=geoProject(codes,gps.lat,gps.lon);
+    if(pr.km<6){
+      liveGps=true; segIdx=pr.segIdx; segFrac=pr.segT;
+      phase=now>=last.t?"done":"moving";
+      pos=segFrac<.12?`At ${NAMES[codes[segIdx]]}`:segFrac>.85?`Approaching ${NAMES[codes[segIdx+1]]}`:`Between ${NAMES[codes[segIdx]]} and ${NAMES[codes[segIdx+1]]}`;
+      pos+=" · GPS";
+    }
+  }
+  if(!liveGps){
+    if(now<first.t){phase="pre";pos=`Departs ${NAMES[first.code]} ${fmt12(first.t)} ${ampm(first.t)}`}
+    else if(now>=last.t){phase="done";pos=`Arrived ${NAMES[last.code]} ${fmt12(last.t)} ${ampm(last.t)}`}
+    else{phase="moving";
+      for(let i=0;i<st.length-1;i++){if(now>=st[i].t&&now<st[i+1].t){segIdx=i;segFrac=(now-st[i].t)/(st[i+1].t-st[i].t);
+        pos=segFrac<.15?`At ${NAMES[st[i].code]}`:segFrac>.8?`Approaching ${NAMES[st[i+1].code]}`:`Between ${NAMES[st[i].code]} and ${NAMES[st[i+1].code]}`;break}}}
+  }
+  const overall=phase==="pre"?0:phase==="done"?1:Math.max(0,(segIdx+segFrac))/(st.length-1);
+  return {id:trip.id,stops:st,dep:origin.t,arr:dest.t,schedDep:origin.sched,dur:dest.t-origin.t,
+    minsToDep:origin.t-now,departedOrigin:now>=origin.t,phase,pos,segIdx,segFrac,overall,
+    delay:delayMin,liveGps};
+}
+function chip(t){
+  if(!t.departedOrigin&&t.minsToDep<=4&&t.phase==="moving")return["BOARDING","var(--amber)","#1A1405"];
+  if(!t.departedOrigin&&t.phase==="moving")return["EN ROUTE","#1E5C3A","#CFF3D6"];
+  if(!t.departedOrigin)return["SCHEDULED","#E4E9E2","var(--sub)"];
+  if(t.phase==="done")return["COMPLETED","#E4E9E2","#9AA79C"];
+  return["DEPARTED","#F0DCD6","var(--red)"];
+}
+function delayBadge(t){
+  if(t.delay===undefined||t.phase==="done")return "";
+  if(t.delay>=2)return `<span class="delay" style="background:#F8E3DD;color:var(--red)">+${t.delay} MIN</span>`;
+  if(t.delay<=-2)return `<span class="delay" style="background:#E2F0E6;color:var(--green-dk)">${t.delay} MIN</span>`;
+  return `<span class="delay" style="background:#E2F0E6;color:var(--green-dk)">ON TIME</span>`;
+}
+
+// ============ state + render ============
+const S={override:null,sim:null,openId:null,showPast:false};
+const app=document.getElementById("app");
+
+function render(){
+  const d=new Date();
+  const liveNow=d.getHours()*60+d.getMinutes()+d.getSeconds()/60;
+  const now=S.sim!==null?S.sim:liveNow;
+  const weekend=S.sim===null&&(d.getDay()===0||d.getDay()===6);
+  const useLive=S.sim===null&&LIVE.ok;
+  const autoMode=now<720?"UNION":"PIC";
+  const mode=S.override||autoMode;
+  const toUnion=mode==="UNION";
+  const originCode=toUnion?"PIC":"UNI", destCode=toUnion?"UNI":"PIC";
+  const trips=(toUnion?TO_UNION:TO_PIC)
+    .map(t=>analyze(t,originCode,destCode,now,useLive?LIVE.delays[t.id]:undefined,useLive?LIVE.pos[t.id]:undefined))
+    .sort((a,b)=>a.dep-b.dep);
+  const next=trips.find(t=>!t.departedOrigin)||null;
+  const movingPast=trips.filter(t=>t.departedOrigin&&t.phase==="moving");
+  const donePast=trips.filter(t=>t.departedOrigin&&t.phase!=="moving");
+  const upcoming=trips.filter(t=>!t.departedOrigin);
+  const visible=[...(S.showPast?donePast:[]),...movingPast,...upcoming];
+
+  const clock=S.sim!==null?`${fmt12(now)}:00 ${ampm(now)}`:d.toLocaleTimeString("en-CA",{hour:"numeric",minute:"2-digit",second:"2-digit"});
+  const date=d.toLocaleDateString("en-CA",{weekday:"long",month:"long",day:"numeric"}).toUpperCase();
+  const corridor=toUnion?WBS:EBS;
+
+  // data source pill
+  let pill,pillColor;
+  if(S.sim!==null){pill="PREVIEW";pillColor="var(--amber)"}
+  else if(LIVE.ok){const age=Math.round((Date.now()-LIVE.updated)/1000);pill=`LIVE · ${age<5?"now":age+"s"}`;pillColor="#4ADE80"}
+  else{pill="SCHEDULE";pillColor="#E8B84B"}
+
+  const hero=(next&&next.phase==="moving"&&next)||(movingPast.length&&movingPast[movingPast.length-1])||next||null;
+  let frac=null;
+  if(hero&&hero.phase==="moving"){
+    if(hero.liveGps&&LIVE.pos[hero.id]){
+      const pr=geoProject(corridor,LIVE.pos[hero.id].lat,LIVE.pos[hero.id].lon);
+      if(pr.km<6)frac=pr.frac;
+    }
+    if(frac===null){
+      const fi=corridor.indexOf(hero.stops[0].code), li=corridor.indexOf(hero.stops[hero.stops.length-1].code);
+      if(fi>=0&&li>=0)frac=(fi+hero.overall*(li-fi))/(corridor.length-1);
+    }
+  }
+
+  let heroHtml;
+  if(weekend){heroHtml=`<div class="empty">This board shows the weekday timetable — weekend service runs less often. Check GO Tracker for today's trains.</div>`}
+  else if(next){
+    const delayed=next.delay!==undefined&&next.delay>=2;
+    heroHtml=`
+      <div class="eyebrow">NEXT DEPARTURE FROM ${toUnion?"PICKERING":"UNION"} · TRAIN ${next.id}${next.delay!==undefined?(delayed?` · <span style="color:#FF8A6A">DELAYED ${next.delay} MIN</span>`:` · <span style="color:#7FD89A">ON TIME</span>`):""}</div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:4px;flex-wrap:wrap">
+        <span class="count">${next.minsToDep>0?cd(next.minsToDep):"NOW"}</span>
+        ${next.minsToDep>0?'<span style="color:#9DB7A0;font-size:13px;font-weight:600">until departure</span>':""}
+      </div>
+      <div class="heroline">Departs <b>${fmt12(next.dep)} ${ampm(next.dep)}</b>${delayed?` <s style="color:#7E957F;font-size:12px">${fmt12(next.schedDep)}</s>`:""} · Arrives ${toUnion?"Union":"Pickering"} <b>${fmt12(next.arr)} ${ampm(next.arr)}</b></div>
+      <div class="heropos" style="color:${next.phase==="pre"?"#9DB7A0":"var(--led)"}">▸ ${next.pos}</div>`;
+  } else {
+    heroHtml=`<div class="empty">Service is done for today in this direction. First train tomorrow departs ${toUnion?"Pickering 5:21 AM":"Union 6:05 AM"}.</div>`;
+  }
+
+  const stripHtml=weekend?"":`
+    <div class="strip">
+      <div class="track"></div>
+      ${corridor.map((c,i)=>{
+        const left=(i/(corridor.length-1))*100;
+        const you=c==="PIC", org=c===originCode;
+        const size=you||org?10:7;
+        const bg=you?"var(--amber)":org?"#fff":"#3D5A47";
+        return `<div class="stn" style="left:${left}%"><div style="width:${size}px;height:${size}px;border-radius:99px;background:${bg};${you||org?"margin-top:-1.5px":""}"></div></div>`;
+      }).join("")}
+      ${frac!==null?`<div class="train" style="left:${frac*100}%"><i></i></div>`:""}
+    </div>
+    <div class="stnlabels">
+      ${corridor.map(c=>{
+        const you=c==="PIC",org=c===originCode;
+        return `<span style="width:${100/corridor.length}%;font-weight:${you||org?800:500};color:${you?"var(--amber)":org?"#E8F2E6":"#6B856F"}">${NAMES[c].toUpperCase().slice(0,toUnion?4:6)}</span>`;
+      }).join("")}
+    </div>
+    ${hero&&hero.phase==="moving"?`<div class="heronote">● Train ${hero.id}: ${hero.pos}</div>`:""}`;
+
+  const rows=visible.map(t=>{
+    const[ctxt,cbg,cfg]=chip(t);
+    const isNext=next&&t.id===next.id;
+    const open=S.openId===t.id;
+    const footRight=(!t.departedOrigin&&t.minsToDep>0&&t.minsToDep<90)?`leaves in ${cd(t.minsToDep)}`:t.pos;
+
+    let tl="";
+    if(open){
+      const tlChip=t.phase==="moving"
+        ?`<span class="dot" style="background:var(--amber)"></span>${t.pos}`
+        :(t.phase==="pre"&&t.minsToDep<120?`Departs in ${cd(Math.max(t.stops[0].t-now,0))} · ${t.pos}`:t.pos);
+      tl=`<div class="tl">
+        <div class="tl-chip" style="background:${t.phase==="moving"?"#103A23":"#EAEEE8"};color:${t.phase==="moving"?"var(--led)":"var(--sub)"}">${tlChip}</div>
+        <div>${t.stops.map((s,i)=>{
+          const passed=t.phase==="done"||(t.phase==="moving"&&i<=t.segIdx&&!(t.segIdx===i&&t.segFrac<.12))||(!t.liveGps&&now>=s.t&&t.phase!=="pre");
+          const hereSeg=t.phase==="moving"&&t.segIdx===i;
+          const atStn=hereSeg&&t.segFrac<.12;
+          const org=s.code===originCode;
+          const dotBg=atStn?"var(--amber)":passed?"var(--green)":"#fff";
+          const dotBd=atStn?"var(--amber)":passed?"var(--green)":"#B9C4BA";
+          let conn="";
+          if(i<t.stops.length-1){
+            const fullPassed=t.phase==="done"||(t.phase==="moving"&&i<t.segIdx);
+            const lineStyle=fullPassed?"background:var(--green)":hereSeg?`background-image:linear-gradient(var(--green) ${Math.round(t.segFrac*100)}%, #D6DED6 ${Math.round(t.segFrac*100)}%)`:"background:#D6DED6";
+            conn=`<div class="tl-conn" style="min-height:${hereSeg&&!atStn?30:16}px">
+              <div class="tl-dotcol"><span style="width:2px;border-radius:2px;${lineStyle}"></span></div>
+              ${hereSeg&&!atStn?`<div class="tl-here"><span class="dot" style="width:11px;height:11px;background:var(--amber);border:2px solid #fff;box-shadow:0 0 0 2px var(--amber)"></span><b>TRAIN ${t.id} IS HERE ${t.liveGps?"(live GPS)":"(est.)"}</b></div>`:""}
+            </div>`;
+          }
+          return `<div class="tl-row">
+            <div class="tl-dotcol"><span style="width:${org?12:9}px;height:${org?12:9}px;border-radius:99px;background:${dotBg};border:2px solid ${dotBd};${atStn?"box-shadow:0 0 0 4px rgba(255,184,28,.25)":""}"></span></div>
+            <div class="tl-name">
+              <span style="font-size:13.5px;font-weight:${org?800:500};color:${passed?"var(--sub)":"var(--ink)"}">${NAMES[s.code]}${org?" · you board here":""}</span>
+              <span style="font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;font-weight:600;color:${passed?"#9AA79C":"var(--ink)"}">${fmt12(s.t)} ${ampm(s.t)}</span>
+            </div>
+          </div>${conn}`;
+        }).join("")}</div>
+      </div>`;
+    }
+
+    return `<div class="trip ${open?"open":isNext?"next":""} ${!open&&t.departedOrigin&&t.phase==="done"?"faded":""}" data-action="open" data-id="${t.id}" role="button" tabindex="0">
+      <div class="row" style="align-items:flex-start">
+        <div style="display:flex;align-items:center;gap:13px">
+          <div><div class="t-time">${fmt12(t.dep)}<small>${ampm(t.dep)}</small></div><div class="t-sub">${toUnion?"dep Pickering":"dep Union"}</div></div>
+          <div style="color:var(--line);font-size:15px">→</div>
+          <div><div class="t-time" style="color:var(--green-dk)">${fmt12(t.arr)}<small>${ampm(t.arr)}</small></div><div class="t-sub">${toUnion?"arr Union":"arr Pickering"}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${delayBadge(t)}
+          <span class="chip" style="background:${cbg};color:${cfg}">${ctxt}</span>
+          <span class="caret ${open?"r":""}">▸</span>
+        </div>
+      </div>
+      <div class="t-foot">
+        <span style="color:var(--sub)">Train <b style="color:var(--ink)">${t.id}</b> · ${t.dur} min ride${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
+        <span class="pos" style="color:${t.departedOrigin?"var(--sub)":"var(--green-dk)"}">${footRight}</span>
+      </div>
+      ${tl}
+    </div>`;
+  }).join("");
+
+  const usingDemo=getKey()===DEMO_KEY;
+  app.innerHTML=`
+    <div class="board">
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:8px"><span class="gobadge">GO</span><span class="linename">LAKESHORE EAST</span></div>
+        <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
+      </div>
+      <div class="row" style="margin-top:14px;align-items:baseline">
+        <div><div class="eyebrow">${date}</div><div class="clock">${clock}</div></div>
+        <div style="text-align:right"><div class="eyebrow">DIRECTION</div><div class="dir">${toUnion?"To Union":"To Pickering"}</div></div>
+      </div>
+      <div class="hero">${heroHtml}</div>
+      ${stripHtml}
+      ${!LIVE.ok&&S.sim===null&&LIVE.err?`<div style="color:#8FA890;font-size:10.5px;margin-top:10px;text-align:center">Live feed: ${LIVE.err} — showing scheduled times. <span data-action="retry" style="text-decoration:underline;cursor:pointer">Retry</span></div>`:""}
+    </div>
+
+    <div class="tabs">
+      <button class="${mode==="UNION"?"tab-on":"tab-off"}" data-action="tab" data-mode="UNION">→ To Union</button>
+      <button class="${mode==="PIC"?"tab-on":"tab-off"}" data-action="tab" data-mode="PIC">→ To Pickering</button>
+    </div>
+
+    <div class="list">
+      <div class="listhead">
+        <span class="l">${toUnion?"WEEKDAY · DEPARTING PICKERING":"WEEKDAY · DEPARTING UNION"}</span>
+        <span class="r">${trips.length} trains/day · tap one to track it</span>
+      </div>
+      ${donePast.length?`<button class="pastbtn" data-action="past">${S.showPast?`▲ Hide ${donePast.length} earlier trains`:`▼ Show ${donePast.length} earlier trains`}</button>`:""}
+      ${rows}
+    </div>
+
+    <div class="footer">
+      <a class="gtbtn" href="https://www.gotracker.ca/gotracker/mobile/" target="_blank" rel="noreferrer">Open GO Tracker map ↗</a>
+      <div class="previews">
+        <span style="font-size:11px;color:var(--sub)">Preview:</span>
+        <button data-action="sim" data-t="${7*60+14}" data-mode="UNION" style="border:1px solid var(--line);background:${S.sim===7*60+14?"var(--ink)":"var(--card)"};color:${S.sim===7*60+14?"#fff":"var(--sub)"}">AM rush</button>
+        <button data-action="sim" data-t="${16*60+58}" data-mode="PIC" style="border:1px solid var(--line);background:${S.sim===16*60+58?"var(--ink)":"var(--card)"};color:${S.sim===16*60+58?"#fff":"var(--sub)"}">PM rush</button>
+        ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
+        <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
+      </div>
+      <p class="disclaimer">Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API, refreshed every 30s; falls back to the official weekday timetable when offline. ${usingDemo?"Currently using Metrolinx's shared demo key — register a free personal key at api.openmetrolinx.com for reliability.":""}</p>
+    </div>`;
+}
+
+app.addEventListener("click",e=>{
+  const el=e.target.closest("[data-action]");
+  if(!el)return;
+  const a=el.dataset.action;
+  if(a==="tab"){const m=el.dataset.mode;const d=new Date();const now=S.sim!==null?S.sim:d.getHours()*60+d.getMinutes();const auto=now<720?"UNION":"PIC";S.override=m===auto?null:m;S.openId=null;S.showPast=false}
+  else if(a==="past"){S.showPast=!S.showPast}
+  else if(a==="open"){const id=el.dataset.id;S.openId=S.openId===id?null:id}
+  else if(a==="sim"){S.sim=Number(el.dataset.t);S.override=el.dataset.mode;S.openId=null}
+  else if(a==="live"){S.sim=null;S.override=null;S.openId=null;refreshLive()}
+  else if(a==="retry"){LIVE.err="connecting…";render();refreshLive();return}
+  else if(a==="key"){
+    const cur=getKey();
+    const v=prompt("Metrolinx GO Open Data API key\n(free at api.openmetrolinx.com → Registration)\n\nLeave blank to use the shared demo key:",cur===DEMO_KEY?"":cur);
+    if(v!==null){try{v.trim()?localStorage.setItem("le_key",v.trim()):localStorage.removeItem("le_key")}catch(err){}refreshLive()}
+  }
+  render();
+});
+app.addEventListener("keydown",e=>{
+  if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.action==="open"){e.preventDefault();e.target.click()}
+});
+
+render();
+setInterval(render,1000);
+refreshLive();
+setInterval(refreshLive,30000);
+window.addEventListener("online",refreshLive);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLive()});
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
