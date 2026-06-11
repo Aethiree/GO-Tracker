@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GO Tracker — My Commute</title>
+<meta name="theme-color" content="#0C1A12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GO Tracker">
+<style>
+  :root{
+    --green:#00703C; --green-dk:#0B5B33; --board:#0C1A12; --board-line:#1D3527;
+    --led:#9FE6A0; --amber:#FFB81C; --bg:#EDF0EB; --card:#FFF;
+    --ink:#15211A; --sub:#5C6B61; --line:#DDE3DC; --red:#C8442C;
+    --mono:"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--board);font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:var(--ink)}
+  #app{max-width:460px;margin:0 auto;background:var(--bg);min-height:100vh;padding-bottom:max(32px, env(safe-area-inset-bottom))}
+  .board{background:var(--board);padding:calc(14px + env(safe-area-inset-top)) 18px 22px;border-bottom:4px solid var(--green)}
+  .row{display:flex;justify-content:space-between;align-items:center}
+  .gobadge{background:var(--green);color:#fff;font-weight:800;font-size:13px;padding:3px 8px;border-radius:3px;letter-spacing:1px}
+  select.dark{appearance:none;-webkit-appearance:none;background:#13241A;color:#CFE8D2;border:1px solid var(--board-line);border-radius:8px;font-weight:700;font-family:inherit;cursor:pointer}
+  select.lineSel{font-size:12.5px;letter-spacing:1px;padding:6px 24px 6px 10px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237E957F'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+  .routebar{display:flex;gap:8px;margin-top:13px}
+  .routebar .fld{flex:1;display:flex;flex-direction:column;gap:3px}
+  .routebar label{color:#7E957F;font-size:9.5px;letter-spacing:1.5px;font-weight:700}
+  select.stnSel{font-size:13px;padding:8px 24px 8px 10px;width:100%;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237E957F'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+  .live{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:2px;font-weight:700}
+  .dot{width:7px;height:7px;border-radius:99px;animation:pulse 1.6s infinite}
+  .eyebrow{color:#7E957F;font-size:11px;letter-spacing:1.5px}
+  .clock{font-family:var(--mono);color:var(--led);font-size:32px;font-weight:600;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:0 0 14px rgba(159,230,160,.35)}
+  .dir{color:#E8F2E6;font-size:15px;font-weight:700}
+  .hero{margin-top:15px;border-top:1px solid var(--board-line);padding-top:13px}
+  .count{font-family:var(--mono);color:var(--amber);font-size:42px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(255,184,28,.4)}
+  .heroline{color:#E8F2E6;font-size:14px;margin-top:2px}
+  .heropos{font-size:13px;margin-top:5px;font-family:var(--mono)}
+  .strip{position:relative;height:34px;margin-top:16px}
+  .track{position:absolute;top:15px;left:0;right:0;border-top:2px dashed var(--board-line)}
+  .stn{position:absolute;top:11px;transform:translateX(-50%)}
+  .stnlabels{display:flex;justify-content:space-between;margin-top:2px}
+  .stnlabels span{font-size:8.5px;letter-spacing:.5px;text-align:center;overflow:hidden}
+  .train{position:absolute;transform:translateX(-50%);transition:left 1s linear}
+  .train i{display:block;border-radius:99px}
+  .heronote{color:#9DB7A0;font-size:10.5px;text-align:center;margin-top:6px;font-family:var(--mono)}
+  .tabs{display:flex;gap:8px;padding:14px 16px 4px}
+  .tabs button{flex:1;padding:11px 6px;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px;transition:all .15s;font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab-on{border:1.5px solid var(--green);background:var(--green);color:#fff}
+  .tab-off{border:1.5px solid var(--line);background:var(--card);color:var(--sub)}
+  .list{padding:10px 16px 0;display:flex;flex-direction:column;gap:9px}
+  .listhead{display:flex;justify-content:space-between;align-items:center;padding:2px 2px 0}
+  .listhead .l{font-size:11px;letter-spacing:1.5px;color:var(--sub);font-weight:700}
+  .listhead .r{font-size:11px;color:var(--sub)}
+  .pastbtn{border:1px dashed var(--line);background:transparent;color:var(--sub);font-size:12px;font-weight:700;padding:9px;border-radius:10px;cursor:pointer;font-family:inherit}
+  .trip{background:var(--card);border-radius:14px;padding:13px 14px;cursor:pointer;border:1px solid var(--line);box-shadow:0 1px 3px rgba(21,33,26,.05);transition:border-color .15s}
+  .trip.next{border:1.5px solid var(--green);box-shadow:0 4px 16px rgba(0,112,60,.12)}
+  .trip.open{border:1.5px solid var(--amber);box-shadow:0 4px 16px rgba(0,112,60,.12)}
+  .trip.faded{opacity:.55}
+  .t-time{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .t-time small{font-size:11px;color:var(--sub);margin-left:3px;font-weight:600}
+  .t-sub{font-size:10.5px;color:var(--sub);font-weight:600;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip{font-size:9.5px;font-weight:800;letter-spacing:1px;padding:4px 8px;border-radius:99px;white-space:nowrap}
+  .delay{font-size:9.5px;font-weight:800;letter-spacing:.5px;padding:4px 7px;border-radius:99px;white-space:nowrap}
+  .caret{color:var(--sub);font-size:12px;transition:transform .15s;display:inline-block}
+  .caret.r{transform:rotate(90deg)}
+  .t-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--bg);font-size:12px;gap:8px}
+  .t-foot .pos{font-family:var(--mono);font-weight:600;text-align:right}
+  .tl{margin-top:12px;padding-top:12px;border-top:1px solid var(--bg)}
+  .tl-chip{font-size:12px;font-weight:700;margin-bottom:10px;display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:99px}
+  .tl-row{display:flex;align-items:center;gap:12px}
+  .tl-dotcol{width:16px;display:flex;justify-content:center}
+  .tl-name{flex:1;display:flex;justify-content:space-between;align-items:baseline}
+  .tl-conn{display:flex;align-items:stretch;gap:12px;min-height:16px}
+  .tl-here{display:flex;align-items:center;gap:7px}
+  .tl-here b{font-size:11.5px;font-weight:800;color:#8A6510;letter-spacing:.3px}
+  .footer{padding:18px 16px 0}
+  .gtbtn{display:block;text-align:center;background:var(--green);color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:13px;border-radius:12px}
+  .previews{margin-top:12px;display:flex;justify-content:center;gap:8px;align-items:center;flex-wrap:wrap}
+  .previews button{font-size:11px;font-weight:700;padding:5px 10px;border-radius:99px;cursor:pointer;font-family:inherit}
+  .disclaimer{font-size:10.5px;color:var(--sub);text-align:center;line-height:1.5;margin-top:10px;padding-bottom:8px}
+  .empty{color:#BFD4C3;font-size:14px}
+  .notice{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;font-size:13px;color:var(--sub);text-align:center}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,184,28,.55)}70%{box-shadow:0 0 0 9px rgba(255,184,28,0)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  button:focus-visible,select:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+// ════════ GO NETWORK — lines & stations (Union first; coords are fallbacks, refined live from Stop/All) ════════
+const LINES={
+ LE:{name:"Lakeshore East",st:[["UN","Union",43.6456,-79.3795],["DA","Danforth",43.6863,-79.3025],["SC","Scarborough",43.7163,-79.2563],["EG","Eglinton",43.7394,-79.2322],["GU","Guildwood",43.7550,-79.1980],["RO","Rouge Hill",43.7802,-79.1302],["PIN","Pickering",43.8311,-79.0857],["AJ","Ajax",43.8484,-79.0416],["WH","Whitby",43.8648,-78.9380],["OS","Oshawa",43.8708,-78.8847]]},
+ LW:{name:"Lakeshore West",st:[["UN","Union",43.6456,-79.3795],["EX","Exhibition",43.6359,-79.4192],["MI","Mimico",43.6164,-79.4972],["LO","Long Branch",43.5919,-79.5456],["PO","Port Credit",43.5560,-79.5870],["CL","Clarkson",43.5130,-79.6340],["OA","Oakville",43.4550,-79.6820],["BO","Bronte",43.3970,-79.7130],["AP","Appleby",43.3780,-79.7560],["BU","Burlington",43.3410,-79.8090],["AL","Aldershot",43.3130,-79.8550],["WR","West Harbour (Hamilton)",43.2690,-79.8660],["SCTH","St. Catharines",43.1560,-79.2440],["NI","Niagara Falls",43.1080,-79.0630]]},
+ MI:{name:"Milton",st:[["UN","Union",43.6456,-79.3795],["KP","Kipling",43.6370,-79.5350],["DI","Dixie",43.6100,-79.5780],["CO","Cooksville",43.5750,-79.6250],["ER","Erindale",43.5550,-79.6650],["SR","Streetsville",43.5720,-79.7080],["ME","Meadowvale",43.5950,-79.7540],["LS","Lisgar",43.5780,-79.7850],["ML","Milton",43.5230,-79.8700]]},
+ KI:{name:"Kitchener",st:[["UN","Union",43.6456,-79.3795],["BL","Bloor",43.6560,-79.4520],["WE","Weston",43.7000,-79.5140],["ET","Etobicoke North",43.7060,-79.5470],["MA","Malton",43.7050,-79.6370],["BE","Bramalea",43.7090,-79.6960],["BA","Brampton",43.6860,-79.7600],["MO","Mount Pleasant",43.6750,-79.8230],["GE","Georgetown",43.6490,-79.9180],["AC","Acton",43.6330,-80.0430],["GL","Guelph",43.5450,-80.2470],["KIT","Kitchener",43.4560,-80.4940]]},
+ BR:{name:"Barrie",st:[["UN","Union",43.6456,-79.3795],["DW","Downsview Park",43.7530,-79.4780],["RU","Rutherford",43.8230,-79.5340],["MP","Maple",43.8610,-79.5080],["KC","King City",43.9200,-79.5240],["AU","Aurora",43.9910,-79.4600],["NE","Newmarket",44.0560,-79.4610],["EA","East Gwillimbury",44.0780,-79.4550],["BD","Bradford",44.1150,-79.5610],["BAS","Barrie South",44.3370,-79.6360],["AW","Allandale Waterfront",44.3740,-79.6890]]},
+ RH:{name:"Richmond Hill",st:[["UN","Union",43.6456,-79.3795],["OR","Oriole",43.7660,-79.3620],["OL","Old Cummer",43.7970,-79.3640],["LA","Langstaff",43.8400,-79.4270],["RI","Richmond Hill",43.8700,-79.4270],["GRM","Gormley",43.9430,-79.4050],["BM","Bloomington",43.9890,-79.3940]]},
+ ST:{name:"Stouffville",st:[["UN","Union",43.6456,-79.3795],["KE","Kennedy",43.7320,-79.2660],["AG","Agincourt",43.7880,-79.2840],["MK","Milliken",43.8230,-79.3020],["UI","Unionville",43.8520,-79.3140],["CE","Centennial",43.8700,-79.3200],["MR","Markham",43.8800,-79.2630],["MJ","Mount Joy",43.9020,-79.2640],["SF","Stouffville",43.9710,-79.2460],["OE","Old Elm",43.9840,-79.2260]]},
+ UP:{name:"UP Express",st:[["UN","Union",43.6456,-79.3795],["BL","Bloor",43.6560,-79.4520],["WE","Weston",43.7000,-79.5140],["PA","Pearson Airport",43.6831,-79.6136]]},
+};
+
+// ════════ CONFIG — persists across launches ════════
+const DEFAULT_CFG={line:"LE",home:"PIN",dest:"UN"};
+let CFG=DEFAULT_CFG;
+try{const c=JSON.parse(localStorage.getItem("go_cfg")||"null");if(c&&LINES[c.line])CFG={...DEFAULT_CFG,...c}}catch(e){}
+function saveCfg(){try{localStorage.setItem("go_cfg",JSON.stringify(CFG))}catch(e){}}
+function lineStations(){return LINES[CFG.line].st}
+function stByKey(k){return lineStations().find(s=>s[0]===k)}
+function ensureCfgValid(){
+  const st=lineStations();
+  if(!stByKey(CFG.home))CFG.home=st[st.length-1][0];
+  if(!stByKey(CFG.dest)||CFG.dest===CFG.home)CFG.dest=st[0][0]===CFG.home?st[1][0]:st[0][0];
+}
+ensureCfgValid();
+
+// resolved API codes & coords (refined from Stop/All)
+let STOPDB={}; try{STOPDB=JSON.parse(localStorage.getItem("go_stops")||"{}")}catch(e){}
+const norm=s=>String(s||"").toLowerCase().replace(/\bgo\b|\bstation\b|\(.*?\)/g,"").replace(/[^a-z]/g,"");
+function apiCode(key){const s=stByKey(key);if(!s)return key;const hit=STOPDB[norm(s[1])];return (hit&&hit.code)||key}
+function coordOf(key){const s=stByKey(key);if(!s)return[0,0];const hit=STOPDB[norm(s[1])];return hit&&isFinite(hit.lat)?[hit.lat,hit.lon]:[s[2],s[3]]}
+const nameOf=k=>{const s=stByKey(k);return s?s[1]:k};
+
+// ════════ LAKESHORE EAST embedded weekday timetable (instant + offline) ════════
+const WBS=["OS","WH","AJ","PIN","RO","GU","EG","SC","DA","UN"];
+const EBS=["UN","DA","SC","EG","GU","RO","PIN"];
+const WB_A=[0,5,13,18,25,33,38,43,49,63], WB_B=[0,5,13,18,26,34,39,44,50,64];
+const EB_P=[0,12,18,23,28,35,43], EB_R=[0,13,20,25,29,36,44];
+const toMin=s=>{const[a,b]=s.split(":").map(Number);return a*60+b};
+const mk=(id,base,off,stn)=>({id,stops:off.map((o,i)=>({key:stn[i],t:toMin(base)+o}))});
+const LE_TRIPS=[
+ ...[["9005","05:03"],["9205","05:33"],["9007","06:08"],["9207","06:38"],["9307","06:53"],["9009","07:08"],["9109","07:23"],["9209","07:38"],["9309","07:53"]].map(([i,t])=>mk(i,t,WB_B,WBS)),
+ mk("9609","07:35",[0,8,13,21,29,34,39,45,59],WBS.slice(1)),
+ ...[["9011","08:09"],["9211","08:39"],["9013","09:09"],["9213","09:39"],["9015","10:09"],["9215","10:39"],["9017","11:09"],["9217","11:39"],["9019","12:09"],["9219","12:39"],["9021","13:09"],["9221","13:39"],["9023","14:09"],["9123","14:24"],["9223","14:39"],["9323","14:54"],["9025","15:09"],["9125","15:24"],["9225","15:39"],["9325","15:54"],["9027","16:09"],["9127","16:24"],["9227","16:39"],["9029","17:09"],["9229","17:39"],["9031","18:09"],["9231","18:39"],["9033","19:09"],["9233","19:39"],["9035","20:09"],["9235","20:39"],["9037","21:09"],["9237","21:39"],["9039","22:09"],["9239","22:39"],["9041","23:09"],["9241","23:39"]].map(([i,t])=>mk(i,t,WB_A,WBS)),
+ ...[["9004","06:05"],["9204","06:35"],["9006","07:05"],["9206","07:39"],["9008","08:09"],["9208","08:39"],["9010","09:05"],["9310","09:50"],["9112","10:20"],["9312","10:50"],["9114","11:20"],["9314","11:50"],["9116","12:20"],["9316","12:50"],["9118","13:20"],["9318","13:50"],["9120","14:20"],["9320","14:50"]].map(([i,t])=>mk(i,t,EB_P,EBS)),
+ ...[["9122","15:20"],["9322","15:50"],["9024","16:05"],["9124","16:20"],["9224","16:35"],["9324","16:50"],["9026","17:05"],["9126","17:20"],["9226","17:35"],["9326","17:50"],["9128","18:20"],["9328","18:50"],["9130","19:20"]].map(([i,t])=>mk(i,t,EB_R,EBS)),
+ ...[["9330","19:50"],["9032","20:20"],["9332","20:50"],["9134","21:20"],["9334","21:50"],["9136","22:20"],["9336","22:50"],["9138","23:22"],["9338","23:50"]].map(([i,t])=>mk(i,t,EB_P,EBS)),
+];
+
+// ════════ LIVE DATA — Metrolinx GO Open Data API ════════
+const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
+const DEMO_KEY="30024739";
+const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
+const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
+const LIVE={ok:false,updated:0,delays:{},pos:{},err:"connecting…"};
+let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
+
+async function fetchJson(url){
+  const tried=new Set();
+  for(const p of [proxyIdx,0,1,2]){
+    if(tried.has(p))continue; tried.add(p);
+    try{
+      const u=PROXIES[p]?PROXIES[p]+encodeURIComponent(url):url;
+      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
+      const r=await fetch(u,{cache:"no-store",signal:ctrl.signal});
+      clearTimeout(tm);
+      if(!r.ok)throw new Error("http "+r.status);
+      const j=await r.json();
+      proxyIdx=p; try{localStorage.setItem("le_proxy",String(p))}catch(e){}
+      return j;
+    }catch(e){}
+  }
+  throw new Error("unreachable");
+}
+const parseApiTime=s=>{
+  if(!s)return null;
+  const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if(!m)return null;
+  return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)).getTime();
+};
+const minOfDay=s=>{ // accepts "YYYY-MM-DD HH:MM:SS", "HH:MM", "HHMM"
+  if(s==null)return null; s=String(s);
+  let m=s.match(/[ T](\d{2}):(\d{2})/)||s.match(/^(\d{1,2}):(\d{2})/);
+  if(m)return +m[1]*60+ +m[2];
+  m=s.match(/^(\d{2})(\d{2})$/);
+  if(m)return +m[1]*60+ +m[2];
+  return null;
+};
+function harvestVehicles(o,out){
+  if(!o||typeof o!=="object")return;
+  if(Array.isArray(o)){for(const x of o)harvestVehicles(x,out);return}
+  if(o.Latitude!==undefined&&o.Longitude!==undefined)out.push(o);
+  for(const k in o)harvestVehicles(o[k],out);
+}
+
+// stations DB from Stop/All (one-time, cached) → corrects codes & coords by name
+async function loadStops(){
+  if(Object.keys(STOPDB).length)return;
+  try{
+    const j=await fetchJson(`${API_BASE}/Stop/All?key=${getKey()}`);
+    const v=[]; harvestVehicles(j,v); // stops also carry Latitude/Longitude
+    const wanted=new Set(); for(const lc in LINES)for(const s of LINES[lc].st)wanted.add(norm(s[1]));
+    const db={};
+    for(const s of v){
+      const n=norm(s.StopName||s.Name||"");
+      const code=s.Code||s.StopCode||s.LocationCode;
+      if(n&&code&&wanted.has(n)&&!db[n])db[n]={code:String(code),lat:+s.Latitude,lon:+s.Longitude};
+    }
+    if(Object.keys(db).length>3){STOPDB=db;try{localStorage.setItem("go_stops",JSON.stringify(db))}catch(e){}}
+  }catch(e){}
+}
+
+async function refreshLive(){
+  if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";render();return}
+  const key=getKey();
+  const results=await Promise.allSettled([
+    fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.home)}?key=${key}`),
+    fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.dest)}?key=${key}`),
+    fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
+  ]);
+  let any=false;
+  const delays={};
+  for(const res of results.slice(0,2)){
+    if(res.status!=="fulfilled")continue;
+    const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
+    for(const L of lines){
+      if(String(L.LineCode||"").toUpperCase()!==CFG.line)continue;
+      const trip=String(L.TripNumber||"").replace(/\D/g,"");
+      const sch=parseApiTime(L.ScheduledDepartureTime);
+      const comp=parseApiTime(L.ComputedDepartureTime)||sch;
+      if(trip&&sch!=null){delays[trip]=Math.round((comp-sch)/60000);any=true;}
+    }
+  }
+  const pos={};
+  if(results[2].status==="fulfilled"){
+    const v=[];harvestVehicles(results[2].value,v);
+    for(const t of v){
+      const trip=String(t.TripNumber||t.TripName||t.Trip||"").replace(/\D/g,"");
+      const lc=String(t.LineCode||t.RouteNumber||t.Line||"").toUpperCase();
+      const lat=+t.Latitude, lon=+t.Longitude;
+      if(trip&&isFinite(lat)&&isFinite(lon)&&lat>42.5&&lat<45&&lon<-77.5&&lon>-81.5){
+        pos[trip]={lat,lon,line:lc};any=true;
+      }
+    }
+  }
+  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.err="";}
+  else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
+  else{LIVE.ok=false;LIVE.err="no data returned";}
+  render();
+}
+
+// ════════ SCHEDULES ════════
+// LE between embedded stations → instant offline timetable (weekdays).
+// Anything else → day's journeys from the Schedule/Journey API, cached per day.
+const SCHED={key:"",status:"idle",trips:[],note:""};
+const todayStr=()=>{const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`};
+
+function embeddedTrips(fromKey,toKey){
+  const out=[];
+  for(const t of LE_TRIPS){
+    const fi=t.stops.findIndex(s=>s.key===fromKey), ti=t.stops.findIndex(s=>s.key===toKey);
+    if(fi>=0&&ti>fi)out.push({id:t.id,stops:t.stops.slice(fi,ti+1),approx:false});
+  }
+  return out.sort((a,b)=>a.stops[0].t-b.stops[0].t);
+}
+
+function parseJourneys(j,fromKey,toKey){
+  const cands=[];
+  (function walk(o){
+    if(!o||typeof o!=="object")return;
+    if(Array.isArray(o)){o.forEach(walk);return}
+    const dep=o.DepartureTime||o.DepartureDateTime||o.StartTime||o.DepartTime;
+    const arr=o.ArrivalTime||o.ArrivalDateTime||o.EndTime||o.ArriveTime;
+    if(dep&&arr)cands.push(o);
+    for(const k in o)walk(o[k]);
+  })(j);
+  const trips=[];
+  const seen=new Set();
+  for(const c of cands){
+    const dep=minOfDay(c.DepartureTime||c.DepartureDateTime||c.StartTime||c.DepartTime);
+    const arr=minOfDay(c.ArrivalTime||c.ArrivalDateTime||c.EndTime||c.ArriveTime);
+    if(dep==null||arr==null||arr<=dep)continue;
+    // gather leg info nested inside this candidate
+    const legs=[];
+    (function w2(o){
+      if(!o||typeof o!=="object")return;
+      if(Array.isArray(o)){o.forEach(w2);return}
+      if(o!==c&&(o.TripNumber||o.LineCode||o.TransitType!==undefined))legs.push(o);
+      for(const k in o)w2(o[k]);
+    })(c);
+    const lineCodes=[...new Set(legs.map(l=>String(l.LineCode||"").toUpperCase()).filter(Boolean))];
+    const tripNo=String((legs.find(l=>l.TripNumber)||{}).TripNumber||c.TripNumber||"").replace(/\D/g,"");
+    const transitTypes=[...new Set(legs.map(l=>String(l.TransitType||l.Type||"").toUpperCase()).filter(Boolean))];
+    const isBus=transitTypes.some(t=>t.includes("B")||t.includes("2"));
+    const transfer=new Set(legs.map(l=>l.TripNumber).filter(Boolean)).size>1;
+    const sig=dep+"|"+arr;
+    if(seen.has(sig))continue; seen.add(sig);
+    trips.push({id:tripNo||("J"+dep),stops:[{key:fromKey,t:dep},{key:toKey,t:arr}],approx:true,
+      transfer,isBus,lineOk:lineCodes.length===0||lineCodes.includes(CFG.line)});
+  }
+  // prefer direct, on-line, rail journeys; if that empties the list, relax
+  let f=trips.filter(t=>t.lineOk&&!t.transfer&&!t.isBus);
+  if(!f.length)f=trips.filter(t=>!t.isBus);
+  if(!f.length)f=trips;
+  return f.sort((a,b)=>a.stops[0].t-b.stops[0].t);
+}
+
+async function ensureSchedule(fromKey,toKey){
+  const isWeekday=(()=>{const d=new Date().getDay();return d>=1&&d<=5})();
+  const le=LINES.LE.st.map(s=>s[0]);
+  const useEmbedded=CFG.line==="LE"&&isWeekday&&le.includes(fromKey)&&le.includes(toKey);
+  const key=`${CFG.line}|${fromKey}|${toKey}|${useEmbedded?"emb":todayStr()}`;
+  if(SCHED.key===key&&SCHED.status!=="error")return;
+  SCHED.key=key;
+  if(useEmbedded){SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="";render();return}
+  // cached?
+  const ck=`go_j_${key}`;
+  try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
+  SCHED.status="loading";SCHED.trips=[];render();
+  try{
+    const j=await fetchJson(`${API_BASE}/Schedule/Journey/${todayStr()}/${apiCode(fromKey)}/${apiCode(toKey)}/0000/300?key=${getKey()}`);
+    const trips=parseJourneys(j,fromKey,toKey);
+    if(SCHED.key!==key)return; // user changed route meanwhile
+    if(trips.length){
+      SCHED.status="ready";SCHED.trips=trips;SCHED.note="";
+      try{ // prune stale day-caches, then store
+        for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_")&&!k.includes(todayStr()))localStorage.removeItem(k)}
+        localStorage.setItem(ck,JSON.stringify(trips));
+      }catch(e){}
+    }else{SCHED.status="error";SCHED.note="No journeys returned for this route today."}
+  }catch(e){
+    if(SCHED.key!==key)return;
+    SCHED.status="error";SCHED.note="Couldn't reach the schedule API.";
+  }
+  render();
+}
+
+// ════════ geometry ════════
+function geoProject(keys,lat,lon){
+  const k=Math.cos(43.75*Math.PI/180);
+  const pts=keys.map(c=>{const[la,lo]=coordOf(c);return[lo*k,la]});
+  const p=[lon*k,lat];
+  const cum=[0];
+  for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  let best=null;
+  for(let i=0;i<pts.length-1;i++){
+    const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay;
+    const len2=dx*dx+dy*dy;
+    let t=len2?((p[0]-ax)*dx+(p[1]-ay)*dy)/len2:0; t=Math.max(0,Math.min(1,t));
+    const d=Math.hypot(p[0]-(ax+t*dx),p[1]-(ay+t*dy));
+    if(!best||d<best.d)best={d,segIdx:i,segT:t,frac:cum.length>1?(cum[i]+t*(cum[i+1]-cum[i]))/cum[cum.length-1]:0};
+  }
+  best.km=best.d*111;
+  return best;
+}
+function corridorSlice(fromKey,toKey){
+  const st=lineStations().map(s=>s[0]);
+  const a=st.indexOf(fromKey), b=st.indexOf(toKey);
+  if(a<0||b<0)return[fromKey,toKey];
+  return a<b?st.slice(a,b+1):st.slice(b,a+1).reverse();
+}
+
+// expand a 2-stop journey across the corridor with distance-interpolated times
+function displayStops(trip,fromKey,toKey){
+  if(!trip.approx||trip.stops.length>2)return trip.stops;
+  const keys=corridorSlice(fromKey,toKey);
+  if(keys.length<3)return trip.stops;
+  const k=Math.cos(43.75*Math.PI/180);
+  const pts=keys.map(c=>{const[la,lo]=coordOf(c);return[lo*k,la]});
+  const cum=[0];
+  for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  const total=cum[cum.length-1]||1;
+  const t0=trip.stops[0].t, t1=trip.stops[trip.stops.length-1].t;
+  return keys.map((key,i)=>({key,t:Math.round(t0+(t1-t0)*(cum[i]/total)),approx:i>0&&i<keys.length-1}));
+}
+
+// ════════ analysis ════════
+const pad=n=>String(n).padStart(2,"0");
+const fmt12=m=>{const h=Math.floor(m/60)%24,mm=Math.round(m%60);return `${h%12===0?12:h%12}:${pad(mm)}`};
+const ampm=m=>Math.floor(m/60)%24<12?"AM":"PM";
+const cd=mins=>{const w=Math.floor(mins),s=Math.floor((mins-w)*60);return `${w}:${pad(s)}`};
+
+function analyze(trip,fromKey,toKey,now,delayMin,gps){
+  const dl=delayMin||0;
+  const base=displayStops(trip,fromKey,toKey);
+  const st=base.map(s=>({key:s.key,t:s.t+dl,sched:s.t,approx:!!s.approx}));
+  const first=st[0],last=st[st.length-1];
+  let phase,pos,segIdx=-1,segFrac=0,liveGps=false;
+  if(gps){
+    const keys=st.map(s=>s.key);
+    const pr=geoProject(keys,gps.lat,gps.lon);
+    if(pr.km<6){
+      liveGps=true;segIdx=pr.segIdx;segFrac=pr.segT;
+      phase=now>=last.t&&(segIdx>=st.length-2&&segFrac>.95)?"done":"moving";
+      pos=segFrac<.12?`At ${nameOf(keys[segIdx])}`:segFrac>.85?`Approaching ${nameOf(keys[segIdx+1])}`:`Between ${nameOf(keys[segIdx])} and ${nameOf(keys[segIdx+1])}`;
+      pos+=" · GPS";
+    }
+  }
+  if(!liveGps){
+    if(now<first.t){phase="pre";pos=`Departs ${nameOf(first.key)} ${fmt12(first.t)} ${ampm(first.t)}`}
+    else if(now>=last.t){phase="done";pos=`Arrived ${nameOf(last.key)} ${fmt12(last.t)} ${ampm(last.t)}`}
+    else{phase="moving";
+      for(let i=0;i<st.length-1;i++){if(now>=st[i].t&&now<st[i+1].t){segIdx=i;segFrac=(now-st[i].t)/(st[i+1].t-st[i].t);
+        pos=segFrac<.15?`At ${nameOf(st[i].key)}`:segFrac>.8?`Approaching ${nameOf(st[i+1].key)}`:`Between ${nameOf(st[i].key)} and ${nameOf(st[i+1].key)}`;break}}}
+  }
+  const overall=phase==="pre"?0:phase==="done"?1:Math.max(0,segIdx+segFrac)/(st.length-1);
+  return {id:trip.id,stops:st,dep:first.t,arr:last.t,schedDep:first.sched,dur:last.t-first.t,
+    minsToDep:first.t-now,departedOrigin:now>=first.t,phase,pos,segIdx,segFrac,overall,
+    delay:delayMin,liveGps,transfer:trip.transfer,approx:trip.approx};
+}
+function chip(t){
+  if(!t.departedOrigin&&t.minsToDep<=4&&t.phase==="moving")return["BOARDING","var(--amber)","#1A1405"];
+  if(!t.departedOrigin&&t.phase==="moving")return["EN ROUTE","#1E5C3A","#CFF3D6"];
+  if(!t.departedOrigin)return["SCHEDULED","#E4E9E2","var(--sub)"];
+  if(t.phase==="done")return["COMPLETED","#E4E9E2","#9AA79C"];
+  return["DEPARTED","#F0DCD6","var(--red)"];
+}
+function delayBadge(t){
+  if(t.delay===undefined||t.phase==="done")return "";
+  if(t.delay>=2)return `<span class="delay" style="background:#F8E3DD;color:var(--red)">+${t.delay} MIN</span>`;
+  if(t.delay<=-2)return `<span class="delay" style="background:#E2F0E6;color:var(--green-dk)">${t.delay} MIN</span>`;
+  return `<span class="delay" style="background:#E2F0E6;color:var(--green-dk)">ON TIME</span>`;
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ════════ state + render ════════
+const S={override:null,sim:null,openId:null,showPast:false};
+const app=document.getElementById("app");
+
+function render(){
+  const d=new Date();
+  const liveNow=d.getHours()*60+d.getMinutes()+d.getSeconds()/60;
+  const now=S.sim!==null?S.sim:liveNow;
+  const useLive=S.sim===null&&LIVE.ok;
+  const autoMode=now<720?"OUT":"BACK";
+  const mode=S.override||autoMode;
+  const out=mode==="OUT"; // home → dest in the morning
+  const fromKey=out?CFG.home:CFG.dest, toKey=out?CFG.dest:CFG.home;
+  const fromName=nameOf(fromKey), toName=nameOf(toKey);
+
+  ensureSchedule(fromKey,toKey);
+
+  const trips=(SCHED.status==="ready"?SCHED.trips:[])
+    .map(t=>analyze(t,fromKey,toKey,now,useLive?LIVE.delays[t.id]:undefined,useLive?LIVE.pos[t.id]&&LIVE.pos[t.id].line===CFG.line?LIVE.pos[t.id]:undefined:undefined))
+    .sort((a,b)=>a.dep-b.dep);
+  const next=trips.find(t=>!t.departedOrigin)||null;
+  const movingPast=trips.filter(t=>t.departedOrigin&&t.phase==="moving");
+  const donePast=trips.filter(t=>t.departedOrigin&&t.phase!=="moving");
+  const upcoming=trips.filter(t=>!t.departedOrigin);
+  const visible=[...(S.showPast?donePast:[]),...movingPast,...upcoming];
+
+  const clock=S.sim!==null?`${fmt12(now)}:00 ${ampm(now)}`:d.toLocaleTimeString("en-CA",{hour:"numeric",minute:"2-digit",second:"2-digit"});
+  const date=d.toLocaleDateString("en-CA",{weekday:"long",month:"long",day:"numeric"}).toUpperCase();
+  const corridor=corridorSlice(fromKey,toKey);
+
+  let pill,pillColor;
+  if(S.sim!==null){pill="PREVIEW";pillColor="var(--amber)"}
+  else if(LIVE.ok){const age=Math.round((Date.now()-LIVE.updated)/1000);pill=`LIVE · ${age<5?"now":age+"s"}`;pillColor="#4ADE80"}
+  else{pill="SCHEDULE";pillColor="#E8B84B"}
+
+  // hero + all live trains on the corridor
+  const hero=(next&&next.phase==="moving"&&next)||(movingPast.length&&movingPast[movingPast.length-1])||next||null;
+  const tripIds=new Set(trips.map(t=>t.id));
+  const liveDots=[];
+  if(useLive){
+    for(const id in LIVE.pos){
+      const p=LIVE.pos[id];
+      if(p.line!==CFG.line)continue;
+      const pr=geoProject(corridor,p.lat,p.lon);
+      if(pr.km>5)continue;
+      if(pr.frac<=0.005||pr.frac>=0.995)continue;
+      liveDots.push({id,frac:pr.frac,mine:tripIds.has(id)});
+    }
+  }
+  let heroFrac=null;
+  if(hero&&hero.phase==="moving"){
+    const ld=liveDots.find(x=>x.id===hero.id);
+    if(ld)heroFrac=ld.frac;
+    else heroFrac=hero.overall; // schedule estimate over its own slice ≈ corridor
+  }
+
+  let heroHtml;
+  if(SCHED.status==="loading"){heroHtml=`<div class="empty">Loading today's ${esc(LINES[CFG.line].name)} schedule…</div>`}
+  else if(SCHED.status==="error"){heroHtml=`<div class="empty">${esc(SCHED.note)} <span data-action="retrysched" style="text-decoration:underline;cursor:pointer">Retry</span></div>`}
+  else if(next){
+    const delayed=next.delay!==undefined&&next.delay>=2;
+    heroHtml=`
+      <div class="eyebrow">NEXT DEPARTURE FROM ${esc(fromName).toUpperCase()}${/^\d+$/.test(next.id)?` · TRAIN ${next.id}`:""}${next.delay!==undefined?(delayed?` · <span style="color:#FF8A6A">DELAYED ${next.delay} MIN</span>`:` · <span style="color:#7FD89A">ON TIME</span>`):""}</div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:4px;flex-wrap:wrap">
+        <span class="count">${next.minsToDep>0?cd(next.minsToDep):"NOW"}</span>
+        ${next.minsToDep>0?'<span style="color:#9DB7A0;font-size:13px;font-weight:600">until departure</span>':""}
+      </div>
+      <div class="heroline">Departs <b>${fmt12(next.dep)} ${ampm(next.dep)}</b>${delayed?` <s style="color:#7E957F;font-size:12px">${fmt12(next.schedDep)}</s>`:""} · Arrives ${esc(toName)} <b>${fmt12(next.arr)} ${ampm(next.arr)}</b></div>
+      <div class="heropos" style="color:${next.phase==="pre"?"#9DB7A0":"var(--led)"}">▸ ${esc(next.pos)}</div>`;
+  } else {
+    heroHtml=`<div class="empty">No more departures today from ${esc(fromName)} toward ${esc(toName)}.</div>`;
+  }
+
+  const stripHtml=SCHED.status!=="ready"?"":`
+    <div class="strip">
+      <div class="track"></div>
+      ${corridor.map((c,i)=>{
+        const left=(i/(corridor.length-1))*100;
+        const home=c===CFG.home, org=c===fromKey;
+        const size=home||org?10:7;
+        const bg=home?"var(--amber)":org?"#fff":"#3D5A47";
+        return `<div class="stn" style="left:${left}%"><div style="width:${size}px;height:${size}px;border-radius:99px;background:${bg};${home||org?"margin-top:-1.5px":""}"></div></div>`;
+      }).join("")}
+      ${liveDots.map(t=>`<div class="train" style="left:${t.frac*100}%;top:${t.mine?2:4}px"><i style="width:${t.mine?14:9}px;height:${t.mine?14:9}px;background:${t.mine?"var(--amber)":"#CFE8D2"};border:2px solid #0C1A12;${t.mine?"outline:1.5px solid var(--amber);animation:glow 2s infinite":""}"></i></div>`).join("")}
+      ${!liveDots.length&&heroFrac!==null?`<div class="train" style="left:${heroFrac*100}%;top:2px"><i style="width:14px;height:14px;background:var(--amber);border:2.5px solid #0C1A12;outline:1.5px solid var(--amber);animation:glow 2s infinite"></i></div>`:""}
+    </div>
+    <div class="stnlabels">
+      ${corridor.map(c=>{
+        const home=c===CFG.home,org=c===fromKey;
+        return `<span style="width:${100/corridor.length}%;font-weight:${home||org?800:500};color:${home?"var(--amber)":org?"#E8F2E6":"#6B856F"}">${esc(nameOf(c)).toUpperCase().slice(0,corridor.length>8?4:6)}</span>`;
+      }).join("")}
+    </div>
+    ${liveDots.length?`<div class="heronote">● ${liveDots.length} live train${liveDots.length>1?"s":""} on this stretch (GPS)</div>`:hero&&hero.phase==="moving"?`<div class="heronote">● ${/^\d+$/.test(hero.id)?"Train "+hero.id:"Next train"}: ${esc(hero.pos)}</div>`:""}`;
+
+  const stnOptions=sel=>lineStations().map(s=>`<option value="${s[0]}" ${s[0]===sel?"selected":""}>${esc(s[1])}</option>`).join("");
+
+  const rows=visible.map(t=>{
+    const[ctxt,cbg,cfg]=chip(t);
+    const isNext=next&&t.id===next.id;
+    const open=S.openId===t.id;
+    const footRight=(!t.departedOrigin&&t.minsToDep>0&&t.minsToDep<90)?`leaves in ${cd(t.minsToDep)}`:esc(t.pos);
+
+    let tl="";
+    if(open){
+      const tlChip=t.phase==="moving"
+        ?`<span class="dot" style="background:var(--amber)"></span>${esc(t.pos)}`
+        :(t.phase==="pre"&&t.minsToDep<120?`Departs in ${cd(Math.max(t.stops[0].t-now,0))} · ${esc(t.pos)}`:esc(t.pos));
+      tl=`<div class="tl">
+        <div class="tl-chip" style="background:${t.phase==="moving"?"#103A23":"#EAEEE8"};color:${t.phase==="moving"?"var(--led)":"var(--sub)"}">${tlChip}</div>
+        <div>${t.stops.map((s,i)=>{
+          const passed=t.phase==="done"||(t.phase==="moving"&&(i<t.segIdx||(t.segIdx===i&&t.segFrac>=.12)))||(t.phase!=="pre"&&!t.liveGps&&now>=s.t);
+          const hereSeg=t.phase==="moving"&&t.segIdx===i;
+          const atStn=hereSeg&&t.segFrac<.12;
+          const org=s.key===fromKey;
+          const dotBg=atStn?"var(--amber)":passed?"var(--green)":"#fff";
+          const dotBd=atStn?"var(--amber)":passed?"var(--green)":"#B9C4BA";
+          let conn="";
+          if(i<t.stops.length-1){
+            const fullPassed=t.phase==="done"||(t.phase==="moving"&&i<t.segIdx);
+            const lineStyle=fullPassed?"background:var(--green)":hereSeg?`background-image:linear-gradient(var(--green) ${Math.round(t.segFrac*100)}%, #D6DED6 ${Math.round(t.segFrac*100)}%)`:"background:#D6DED6";
+            conn=`<div class="tl-conn" style="min-height:${hereSeg&&!atStn?30:16}px">
+              <div class="tl-dotcol"><span style="width:2px;border-radius:2px;${lineStyle}"></span></div>
+              ${hereSeg&&!atStn?`<div class="tl-here"><span class="dot" style="width:11px;height:11px;background:var(--amber);border:2px solid #fff;box-shadow:0 0 0 2px var(--amber)"></span><b>${/^\d+$/.test(t.id)?"TRAIN "+t.id:"TRAIN"} IS HERE ${t.liveGps?"(live GPS)":"(est.)"}</b></div>`:""}
+            </div>`;
+          }
+          return `<div class="tl-row">
+            <div class="tl-dotcol"><span style="width:${org?12:9}px;height:${org?12:9}px;border-radius:99px;background:${dotBg};border:2px solid ${dotBd};${atStn?"box-shadow:0 0 0 4px rgba(255,184,28,.25)":""}"></span></div>
+            <div class="tl-name">
+              <span style="font-size:13.5px;font-weight:${org?800:500};color:${passed?"var(--sub)":"var(--ink)"}">${esc(nameOf(s.key))}${org?" · you board here":""}</span>
+              <span style="font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;font-weight:600;color:${passed?"#9AA79C":"var(--ink)"}">${s.approx?"≈":""}${fmt12(s.t)} ${ampm(s.t)}</span>
+            </div>
+          </div>${conn}`;
+        }).join("")}</div>
+        ${t.approx?`<div style="font-size:10px;color:var(--sub);margin-top:8px">≈ intermediate times estimated by distance — origin &amp; arrival times are official</div>`:""}
+      </div>`;
+    }
+
+    return `<div class="trip ${open?"open":isNext?"next":""} ${!open&&t.departedOrigin&&t.phase==="done"?"faded":""}" data-action="open" data-id="${esc(t.id)}" role="button" tabindex="0">
+      <div class="row" style="align-items:flex-start">
+        <div style="display:flex;align-items:center;gap:13px">
+          <div><div class="t-time">${fmt12(t.dep)}<small>${ampm(t.dep)}</small></div><div class="t-sub">dep ${esc(fromName)}</div></div>
+          <div style="color:var(--line);font-size:15px">→</div>
+          <div><div class="t-time" style="color:var(--green-dk)">${fmt12(t.arr)}<small>${ampm(t.arr)}</small></div><div class="t-sub">arr ${esc(toName)}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${delayBadge(t)}
+          <span class="chip" style="background:${cbg};color:${cfg}">${ctxt}</span>
+          <span class="caret ${open?"r":""}">▸</span>
+        </div>
+      </div>
+      <div class="t-foot">
+        <span style="color:var(--sub)">${/^\d+$/.test(t.id)?`Train <b style="color:var(--ink)">${t.id}</b> · `:""}${t.dur} min${t.transfer?" · transfer":""}${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
+        <span class="pos" style="color:${t.departedOrigin?"var(--sub)":"var(--green-dk)"}">${footRight}</span>
+      </div>
+      ${tl}
+    </div>`;
+  }).join("");
+
+  const usingDemo=getKey()===DEMO_KEY;
+  app.innerHTML=`
+    <div class="board">
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="gobadge">GO</span>
+          <select class="dark lineSel" data-action="line">
+            ${Object.keys(LINES).map(lc=>`<option value="${lc}" ${lc===CFG.line?"selected":""}>${esc(LINES[lc].name).toUpperCase()}</option>`).join("")}
+          </select>
+        </div>
+        <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
+      </div>
+
+      <div class="routebar">
+        <div class="fld"><label>HOME STATION</label><select class="dark stnSel" data-action="home">${stnOptions(CFG.home)}</select></div>
+        <div class="fld"><label>DESTINATION</label><select class="dark stnSel" data-action="dest">${stnOptions(CFG.dest)}</select></div>
+      </div>
+
+      <div class="row" style="margin-top:13px;align-items:baseline">
+        <div><div class="eyebrow">${date}</div><div class="clock">${clock}</div></div>
+        <div style="text-align:right"><div class="eyebrow">DIRECTION</div><div class="dir">${esc(fromName)} → ${esc(toName)}</div></div>
+      </div>
+      <div class="hero">${heroHtml}</div>
+      ${stripHtml}
+      ${!LIVE.ok&&S.sim===null&&LIVE.err?`<div style="color:#8FA890;font-size:10.5px;margin-top:10px;text-align:center">Live feed: ${esc(LIVE.err)} — showing scheduled times. <span data-action="retry" style="text-decoration:underline;cursor:pointer">Retry</span></div>`:""}
+    </div>
+
+    <div class="tabs">
+      <button class="${mode==="OUT"?"tab-on":"tab-off"}" data-action="tab" data-mode="OUT">→ To ${esc(nameOf(CFG.dest))}</button>
+      <button class="${mode==="BACK"?"tab-on":"tab-off"}" data-action="tab" data-mode="BACK">→ To ${esc(nameOf(CFG.home))}</button>
+    </div>
+
+    <div class="list">
+      <div class="listhead">
+        <span class="l">${esc(LINES[CFG.line].name).toUpperCase()} · DEPARTING ${esc(fromName).toUpperCase()}</span>
+        <span class="r">${SCHED.status==="ready"?trips.length+" today · tap to track":""}</span>
+      </div>
+      ${SCHED.status==="loading"?`<div class="notice">Loading today's schedule for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
+      ${SCHED.status==="error"?`<div class="notice">${esc(SCHED.note)}<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Retry</button></div>`:""}
+      ${donePast.length?`<button class="pastbtn" data-action="past">${S.showPast?`▲ Hide ${donePast.length} earlier trains`:`▼ Show ${donePast.length} earlier trains`}</button>`:""}
+      ${rows}
+    </div>
+
+    <div class="footer">
+      <a class="gtbtn" href="https://www.gotracker.ca/gotracker/mobile/" target="_blank" rel="noreferrer">Open GO Tracker map ↗</a>
+      <div class="previews">
+        <span style="font-size:11px;color:var(--sub)">Preview:</span>
+        <button data-action="sim" data-t="${7*60+14}" data-mode="OUT" style="border:1px solid var(--line);background:${S.sim===7*60+14?"var(--ink)":"var(--card)"};color:${S.sim===7*60+14?"#fff":"var(--sub)"}">AM rush</button>
+        <button data-action="sim" data-t="${16*60+58}" data-mode="BACK" style="border:1px solid var(--line);background:${S.sim===16*60+58?"var(--ink)":"var(--card)"};color:${S.sim===16*60+58?"#fff":"var(--sub)"}">PM rush</button>
+        ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
+        <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
+      </div>
+      <p class="disclaimer">Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+    </div>`;
+}
+
+// ════════ events ════════
+app.addEventListener("change",e=>{
+  const el=e.target.closest("[data-action]");
+  if(!el)return;
+  const a=el.dataset.action;
+  if(a==="line"){CFG.line=el.value;ensureCfgValid();saveCfg();S.openId=null;S.showPast=false;S.override=null;render();refreshLive()}
+  else if(a==="home"){if(el.value===CFG.dest)CFG.dest=CFG.home;CFG.home=el.value;saveCfg();S.openId=null;S.showPast=false;render();refreshLive()}
+  else if(a==="dest"){if(el.value===CFG.home)CFG.home=CFG.dest;CFG.dest=el.value;saveCfg();S.openId=null;S.showPast=false;render();refreshLive()}
+});
+app.addEventListener("click",e=>{
+  const el=e.target.closest("[data-action]");
+  if(!el||el.tagName==="SELECT")return;
+  const a=el.dataset.action;
+  if(a==="tab"){const m=el.dataset.mode;const d=new Date();const nw=S.sim!==null?S.sim:d.getHours()*60+d.getMinutes();const auto=nw<720?"OUT":"BACK";S.override=m===auto?null:m;S.openId=null;S.showPast=false}
+  else if(a==="past"){S.showPast=!S.showPast}
+  else if(a==="open"){const id=el.dataset.id;S.openId=S.openId===id?null:id}
+  else if(a==="sim"){S.sim=Number(el.dataset.t);S.override=el.dataset.mode;S.openId=null}
+  else if(a==="live"){S.sim=null;S.override=null;S.openId=null;refreshLive()}
+  else if(a==="retry"){LIVE.err="connecting…";render();refreshLive();return}
+  else if(a==="retrysched"){SCHED.key="";SCHED.status="idle";render();return}
+  else if(a==="key"){
+    const cur=getKey();
+    const v=prompt("Metrolinx GO Open Data API key\n(free at api.openmetrolinx.com → Registration)\n\nLeave blank to use the shared demo key:",cur===DEMO_KEY?"":cur);
+    if(v!==null){try{v.trim()?localStorage.setItem("le_key",v.trim()):localStorage.removeItem("le_key")}catch(err){}STOPDB={};try{localStorage.removeItem("go_stops")}catch(err){}loadStops().then(refreshLive)}
+  }
+  render();
+});
+app.addEventListener("keydown",e=>{
+  if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.action==="open"){e.preventDefault();e.target.click()}
+});
+
+render();
+setInterval(render,1000);
+loadStops().then(refreshLive);
+setInterval(refreshLive,30000);
+window.addEventListener("online",()=>{loadStops().then(refreshLive)});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLive()});
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
