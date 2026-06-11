@@ -1,4 +1,4 @@
-const CACHE = "go-tracker-v3";
+const CACHE = "go-tracker-v4";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -11,11 +11,24 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// App shell: cache-first (works offline). Live API calls (cross-origin) are NOT
-// intercepted — they always go to the network so data stays fresh.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-  if (new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  if (url.origin !== location.origin) return; // live API calls always hit the network
+
+  // HTML: network-first so deployed updates show up immediately; cache is the offline fallback
+  if (e.request.mode === "navigate" || url.pathname.endsWith(".html") || url.pathname.endsWith("/")) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((h) => h || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // icons/manifest: cache-first
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
       if (res.ok) {
@@ -23,6 +36,6 @@ self.addEventListener("fetch", (e) => {
         caches.open(CACHE).then((c) => c.put(e.request, copy));
       }
       return res;
-    }).catch(() => caches.match("./index.html")))
+    }))
   );
 });
