@@ -233,18 +233,21 @@ async function refreshLive(){
       const trip=String(L.TripNumber||"").replace(/\D/g,"");
       const sch=parseApiTime(L.ScheduledDepartureTime);
       const comp=parseApiTime(L.ComputedDepartureTime)||sch;
-      if(trip&&sch!=null){delays[trip]=Math.round((comp-sch)/60000);any=true;}
+      if(trip&&sch!=null){const dm=Math.round((comp-sch)/60000);if(dm>-15&&dm<240){delays[trip]=dm;any=true;}}
     }
   }
   const pos={};
   if(results[2].status==="fulfilled"){
     const v=[];harvestVehicles(results[2].value,v);
+    const score={};
     for(const t of v){
-      const trip=String(t.TripNumber||t.TripName||t.Trip||"").replace(/\D/g,"");
+      const trip=String(t.TripNumber||"").replace(/\D/g,"");
       const lc=String(t.LineCode||t.RouteNumber||t.Line||"").toUpperCase();
       const lat=+t.Latitude, lon=+t.Longitude;
-      if(trip&&isFinite(lat)&&isFinite(lon)&&lat>42.5&&lat<45&&lon<-77.5&&lon>-81.5){
-        pos[trip]={lat,lon,line:lc};any=true;
+      // must look like a vehicle record, not a stop or trip-summary that happens to carry coords
+      const sc=(t.IsInMotion!==undefined?2:0)+(t.Speed!==undefined?2:0)+(t.Course!==undefined||t.Heading!==undefined?1:0)+(t.ModifiedDate!==undefined||t.LastUpdated!==undefined?1:0);
+      if(trip&&lc&&isFinite(lat)&&isFinite(lon)&&lat>42.5&&lat<45&&lon<-77.5&&lon>-81.5){
+        if(score[trip]===undefined||sc>=score[trip]){pos[trip]={lat,lon,line:lc};score[trip]=sc;any=true;}
       }
     }
   }
@@ -406,7 +409,8 @@ function analyze(trip,fromKey,toKey,now,delayMin,gps){
   if(gps){
     const keys=st.map(s=>s.key);
     const pr=geoProject(keys,gps.lat,gps.lon);
-    if(pr.km<6){
+    const tAtGps=pr.segIdx<st.length-1?st[pr.segIdx].t+pr.segT*(st[pr.segIdx+1].t-st[pr.segIdx].t):last.t;
+    if(pr.km<6&&Math.abs(tAtGps-now)<=20){
       liveGps=true;segIdx=pr.segIdx;segFrac=pr.segT;
       phase=now>=last.t&&(segIdx>=st.length-2&&segFrac>.95)?"done":"moving";
       pos=segFrac<.12?`At ${nameOf(keys[segIdx])}`:segFrac>.85?`Approaching ${nameOf(keys[segIdx+1])}`:`Between ${nameOf(keys[segIdx])} and ${nameOf(keys[segIdx+1])}`;
@@ -483,26 +487,14 @@ function render(force){
 
   const movingPast=departed.filter(t=>t.phase==="moving");
   const hero=(next&&next.phase==="moving"&&next)||(movingPast.length&&movingPast[movingPast.length-1])||next||null;
-  const tripIds=new Set(trips.map(t=>t.id));
+  // one dot per moving train in this direction; GPS-validated positions when available,
+  // schedule estimates otherwise — both flow through the same analyzed trip
   const liveDots=[];
-  if(useLive){
-    for(const id in LIVE.pos){
-      const p=LIVE.pos[id];
-      if(p.line!==CFG.line)continue;
-      if(!tripIds.has(id))continue; // only trains travelling in the selected direction
-      const pr=geoProject(corridor,p.lat,p.lon);
-      if(pr.km>5)continue;
-      if(pr.frac<=0.005||pr.frac>=0.995)continue;
-      liveDots.push({id,frac:pr.frac,mine:tripIds.has(id),sel:id===S.openId});
-    }
-  }
-  // schedule-estimated dots for every moving train in this direction without a GPS fix
-  const gpsIds=new Set(liveDots.map(x=>x.id));
   for(const t of trips){
-    if(t.phase!=="moving"||gpsIds.has(t.id))continue;
+    if(t.phase!=="moving")continue;
     const f=mapFracToStrip(t,corridor);
     if(f===null||f<=0.003||f>=0.997)continue;
-    liveDots.push({id:t.id,frac:f,sel:t.id===S.openId,est:true});
+    liveDots.push({id:t.id,frac:f,sel:t.id===S.openId,est:!t.liveGps});
   }
   liveDots.sort((a,b)=>a.frac-b.frac);
   const selTrip=S.openId!==null?trips.find(t=>t.id===S.openId):null;
