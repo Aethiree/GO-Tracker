@@ -157,7 +157,7 @@ const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
 const DEMO_KEY="30024739";
 const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
 const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
-const LIVE={ok:false,updated:0,delays:{},pos:{},err:"connecting…"};
+const LIVE={ok:false,updated:0,delays:{},pos:{},err:"connecting…",inflight:false,lastAttempt:0};
 let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
 
 async function fetchJson(url){
@@ -216,7 +216,10 @@ async function loadStops(){
 }
 
 async function refreshLive(){
-  if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";render();return}
+  if(LIVE.inflight)return;
+  LIVE.inflight=true;LIVE.lastAttempt=Date.now();
+  try{
+  if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";return}
   const key=getKey();
   const results=await Promise.allSettled([
     fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.home)}?key=${key}`),
@@ -254,7 +257,8 @@ async function refreshLive(){
   if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.err="";}
   else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
   else{LIVE.ok=false;LIVE.err="no data returned";}
-  render();
+  }catch(e){LIVE.ok=false;LIVE.err="refresh failed";}
+  finally{LIVE.inflight=false;render();}
 }
 
 // ════════ SCHEDULES ════════
@@ -456,6 +460,7 @@ function render(force){
   // don't re-render while a dropdown is open — it would dismiss the picker
   const ae=document.activeElement;
   if(!force&&ae&&ae.tagName==="SELECT"&&app.contains(ae))return;
+  if(S.sim===null&&!LIVE.inflight&&Date.now()-(LIVE.lastAttempt||0)>(LIVE.ok?31000:12000))refreshLive();
 
   const d=new Date();
   const liveNow=d.getHours()*60+d.getMinutes()+d.getSeconds()/60;
