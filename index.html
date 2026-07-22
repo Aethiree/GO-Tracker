@@ -317,21 +317,32 @@ function parseJourneys(j,fromKey,toKey){
   return f.sort((a,b)=>a.stops[0].t-b.stops[0].t);
 }
 
+// merge API journeys with embedded LE stop detail when trip numbers line up:
+// authoritative times & trip list from the API, rich station-by-station data from the built-in table
+function enrichLE(trips,fromKey,toKey){
+  if(CFG.line!=="LE")return trips;
+  return trips.map(tr=>{
+    if(!/^\d+$/.test(tr.id))return tr;
+    const emb=LE_TRIPS.find(e=>e.id===tr.id);
+    if(!emb)return tr;
+    const fi=emb.stops.findIndex(s=>s.key===fromKey), ti=emb.stops.findIndex(s=>s.key===toKey);
+    if(fi<0||ti<=fi)return tr;
+    const shift=tr.stops[0].t-emb.stops[fi].t;
+    if(Math.abs(shift)>30)return tr; // timetable moved too much — trust the plain API times
+    return {id:tr.id,stops:emb.stops.slice(0,ti+1).map(s=>({key:s.key,t:s.t+shift})),approx:false,transfer:tr.transfer};
+  });
+}
+
 async function ensureSchedule(fromKey,toKey){
-  const isWeekday=(()=>{const d=new Date().getDay();return d>=1&&d<=5})();
-  const le=LINES.LE.st.map(s=>s[0]);
-  const useEmbedded=CFG.line==="LE"&&isWeekday&&le.includes(fromKey)&&le.includes(toKey);
-  const key=`${CFG.line}|${fromKey}|${toKey}|${useEmbedded?"emb":todayStr()}`;
+  const key=`${CFG.line}|${fromKey}|${toKey}|${todayStr()}`;
   if(SCHED.key===key&&SCHED.status!=="error")return;
   SCHED.key=key;
-  if(useEmbedded){SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="";render();return}
-  // cached?
   const ck=`go_j_${key}`;
   try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
   SCHED.status="loading";SCHED.trips=[];render();
   try{
     const j=await fetchJson(`${API_BASE}/Schedule/Journey/${todayStr()}/${apiCode(fromKey)}/${apiCode(toKey)}/0000/300?key=${getKey()}`);
-    const trips=parseJourneys(j,fromKey,toKey);
+    const trips=enrichLE(parseJourneys(j,fromKey,toKey),fromKey,toKey);
     if(SCHED.key!==key)return; // user changed route meanwhile
     if(trips.length){
       SCHED.status="ready";SCHED.trips=trips;SCHED.note="";
@@ -339,10 +350,17 @@ async function ensureSchedule(fromKey,toKey){
         for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_")&&!k.includes(todayStr()))localStorage.removeItem(k)}
         localStorage.setItem(ck,JSON.stringify(trips));
       }catch(e){}
-    }else{SCHED.status="error";SCHED.note="No journeys returned for this route today."}
+    }else{throw new Error("empty")}
   }catch(e){
     if(SCHED.key!==key)return;
-    SCHED.status="error";SCHED.note="Couldn't reach the schedule API.";
+    // offline / API-failure fallback: built-in LE weekday timetable
+    const le=LINES.LE.st.map(s=>s[0]);
+    const wk=(()=>{const d=new Date().getDay();return d>=1&&d<=5})();
+    if(CFG.line==="LE"&&wk&&le.includes(fromKey)&&le.includes(toKey)){
+      SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="offline timetable";
+    }else{
+      SCHED.status="error";SCHED.note="Couldn't load today's schedule for this route.";
+    }
   }
   render();
 }
@@ -498,8 +516,8 @@ function render(force){
   for(const t of trips){
     if(t.phase!=="moving")continue;
     const f=mapFracToStrip(t,corridor);
-    if(f===null||f<=0.003||f>=0.997)continue;
-    liveDots.push({id:t.id,frac:f,sel:t.id===S.openId,est:!t.liveGps});
+    if(f===null)continue;
+    liveDots.push({id:t.id,frac:Math.min(.99,Math.max(.01,f)),sel:t.id===S.openId,est:!t.liveGps});
   }
   liveDots.sort((a,b)=>a.frac-b.frac);
   const selTrip=S.openId!==null?trips.find(t=>t.id===S.openId):null;
@@ -648,7 +666,7 @@ function render(force){
     <div class="list">
       <div class="listhead">
         <span class="l">${esc(LINES[CFG.line].name).toUpperCase()} · DEPARTING ${esc(fromName).toUpperCase()}</span>
-        <span class="r">${SCHED.status==="ready"?trips.length+" today · tap to track":""}</span>
+        <span class="r">${SCHED.status==="ready"?trips.length+" today"+(SCHED.note?" · "+SCHED.note:" · tap to track"):""}</span>
       </div>
       ${SCHED.status==="loading"?`<div class="notice">Loading today's schedule for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
       ${SCHED.status==="error"?`<div class="notice">${esc(SCHED.note)}<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Retry</button></div>`:""}
