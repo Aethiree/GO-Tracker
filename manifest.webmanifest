@@ -1,7 +1,7 @@
 {
-  "name": "LE Tracker — Pickering ⇄ Union",
-  "short_name": "LE Tracker",
-  "description": "GO Lakeshore East departure board for the Pickering–Union commute",
+  "name": "GO Tracker — My Commute",
+  "short_name": "GO Tracker",
+  "description": "Live GO train departure board for your commute",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
