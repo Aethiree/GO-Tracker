@@ -42,6 +42,7 @@
   .live{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:2px;font-weight:700}
   .dot{width:7px;height:7px;border-radius:99px;animation:pulse 1.6s infinite}
   .eyebrow{color:#7E957F;font-size:11px;letter-spacing:1.5px}
+  .verstamp{font-family:var(--mono);font-size:9.5px;color:#6B856F;letter-spacing:.5px;border:1px solid var(--board-line);border-radius:5px;padding:1px 4px}
   .miniclock{font-family:var(--mono);color:var(--led);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgba(159,230,160,.3)}
   .dir{color:#E8F2E6;font-size:15px;font-weight:700}
   .hero{margin-top:10px;border-top:1px solid var(--board-line);padding-top:9px}
@@ -572,7 +573,8 @@ function render(force){
             ${Object.keys(LINES).map(lc=>`<option value="${lc}" ${lc===CFG.line?"selected":""}>${esc(LINES[lc].name).toUpperCase()}</option>`).join("")}
           </select>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="verstamp">v6</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -682,7 +684,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v6 (2026-07-27). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -733,7 +735,16 @@ window.addEventListener("online",()=>{loadStops().then(refreshLive)});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLive()});
 
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js?v6",{updateViaCache:"none"}).then(reg=>{
+      reg.update();
+      // if a new worker takes over, reload once so the fresh page is shown immediately
+      let reloaded=false;
+      navigator.serviceWorker.addEventListener("controllerchange",()=>{
+        if(reloaded)return;reloaded=true;location.reload();
+      });
+    }).catch(()=>{});
+  });
 }
 
 </script>
