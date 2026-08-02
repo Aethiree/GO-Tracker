@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pages Test</title>
+<style>
+  body{font-family:-apple-system,Helvetica,Arial,sans-serif;background:#0C1A12;color:#E8F2E6;margin:0;padding:28px;line-height:1.5}
+  .ok{background:#00703C;color:#fff;padding:18px;border-radius:12px;font-size:20px;font-weight:800;text-align:center}
+  h2{font-size:15px;margin:22px 0 8px;color:#9FE6A0}
+  .row{background:#13241A;border:1px solid #1D3527;border-radius:10px;padding:12px;margin-bottom:8px;font-size:14px}
+  .lbl{color:#7E957F;font-size:11px;letter-spacing:1px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all}
+  button{background:#FFB81C;color:#1A1405;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;width:100%;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="ok">✓ PAGES IS SERVING NEW FILES</div>
+<p style="font-size:14px;color:#BFD4C3">If you can read this, GitHub Pages published a brand-new file successfully — so uploading works and the problem is elsewhere (cache or the app file itself).</p>
+
+<h2>DIAGNOSTICS</h2>
+<div class="row"><span class="lbl">THIS PAGE URL</span><br><code id="url"></code></div>
+<div class="row"><span class="lbl">index.html STATUS</span><br><code id="idx">checking…</code></div>
+<div class="row"><span class="lbl">index.html VERSION FOUND</span><br><code id="ver">checking…</code></div>
+<div class="row"><span class="lbl">sw.js STATUS</span><br><code id="sw">checking…</code></div>
+<div class="row"><span class="lbl">SERVICE WORKERS REGISTERED</span><br><code id="swreg">checking…</code></div>
+
+<button onclick="nuke()">Unregister service workers + clear caches</button>
+
+<script>
+document.getElementById("url").textContent = location.href;
+
+fetch("index.html?cachebust=" + Date.now(), {cache:"no-store"})
+  .then(r => { document.getElementById("idx").textContent = "HTTP " + r.status + (r.ok ? " OK" : " ← PROBLEM"); return r.text(); })
+  .then(t => {
+    var m = t.match(/verstamp">(.*?)</);
+    var build = t.match(/Build (v\d+) \(([\d-]+)\)/);
+    document.getElementById("ver").textContent =
+      m ? ("badge " + m[1] + (build ? " · built " + build[2] : "")) + " ← this is the version live on the server"
+        : "NO VERSION BADGE — the server still has an OLD index.html";
+  })
+  .catch(e => { document.getElementById("idx").textContent = "FETCH FAILED: " + e.message; });
+
+fetch("sw.js?cachebust=" + Date.now(), {cache:"no-store"})
+  .then(r => r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)))
+  .then(t => { var m = t.match(/go-tracker-v\d+/); document.getElementById("sw").textContent = "HTTP 200 OK · cache name: " + (m ? m[0] : "unknown"); })
+  .catch(e => { document.getElementById("sw").textContent = "FAILED: " + e.message; });
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then(rs => {
+    document.getElementById("swreg").textContent = rs.length ? rs.length + " registered (scope: " + rs.map(r => r.scope).join(", ") + ")" : "none";
+  });
+} else { document.getElementById("swreg").textContent = "not supported"; }
+
+function nuke() {
+  var done = [];
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then(rs => {
+      rs.forEach(r => r.unregister());
+      done.push(rs.length + " workers unregistered");
+      if (window.caches) caches.keys().then(ks => {
+        ks.forEach(k => caches.delete(k));
+        alert(done.join("\n") + "\n" + ks.length + " caches deleted.\n\nNow close this tab, then open index.html fresh.");
+      });
+      else alert(done.join("\n"));
+    });
+  }
+}
+</script>
+</body>
+</html>
