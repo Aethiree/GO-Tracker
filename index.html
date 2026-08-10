@@ -167,7 +167,7 @@ async function fetchJson(url){
     if(tried.has(p))continue; tried.add(p);
     try{
       const u=PROXIES[p]?PROXIES[p]+encodeURIComponent(url):url;
-      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),9000);
+      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),5000);
       const r=await fetch(u,{cache:"no-store",signal:ctrl.signal});
       clearTimeout(tm);
       if(!r.ok)throw new Error("http "+r.status);
@@ -334,19 +334,30 @@ function enrichLE(trips,fromKey,toKey){
   });
 }
 
+function embeddedAvailable(fromKey,toKey){
+  const le=LINES.LE.st.map(s=>s[0]);
+  const d=new Date().getDay();
+  return CFG.line==="LE"&&d>=1&&d<=5&&le.includes(fromKey)&&le.includes(toKey);
+}
+
 async function ensureSchedule(fromKey,toKey){
   const key=`${CFG.line}|${fromKey}|${toKey}|${todayStr()}`;
   if(SCHED.key===key&&SCHED.status!=="error")return;
   SCHED.key=key;
   const ck=`go_j_${key}`;
   try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
-  SCHED.status="loading";SCHED.trips=[];render();
+  if(embeddedAvailable(fromKey,toKey)){
+    // instant: show the built-in timetable now, refine with live API data when it lands
+    SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="built-in times";render();
+  }else{
+    SCHED.status="loading";SCHED.trips=[];render();
+  }
   try{
     const j=await fetchJson(`${API_BASE}/Schedule/Journey/${todayStr()}/${apiCode(fromKey)}/${apiCode(toKey)}/0000/300?key=${getKey()}`);
     const trips=enrichLE(parseJourneys(j,fromKey,toKey),fromKey,toKey);
     if(SCHED.key!==key)return; // user changed route meanwhile
     if(trips.length){
-      SCHED.status="ready";SCHED.trips=trips;SCHED.note="";
+      SCHED.status="ready";SCHED.trips=trips;SCHED.note="";S.needScroll=true;
       try{ // prune stale day-caches, then store
         for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_")&&!k.includes(todayStr()))localStorage.removeItem(k)}
         localStorage.setItem(ck,JSON.stringify(trips));
@@ -354,11 +365,8 @@ async function ensureSchedule(fromKey,toKey){
     }else{throw new Error("empty")}
   }catch(e){
     if(SCHED.key!==key)return;
-    // offline / API-failure fallback: built-in LE weekday timetable
-    const le=LINES.LE.st.map(s=>s[0]);
-    const wk=(()=>{const d=new Date().getDay();return d>=1&&d<=5})();
-    if(CFG.line==="LE"&&wk&&le.includes(fromKey)&&le.includes(toKey)){
-      SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="offline timetable";
+    if(embeddedAvailable(fromKey,toKey)){
+      SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="built-in times";
     }else{
       SCHED.status="error";SCHED.note="Couldn't load today's schedule for this route.";
     }
@@ -574,7 +582,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v6</span>
+          <span class="verstamp">v7</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -684,7 +692,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v6 (2026-07-27). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v7 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -736,7 +744,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLiv
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v6",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v7",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
