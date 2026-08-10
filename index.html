@@ -164,7 +164,7 @@ const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
 const DEMO_KEY="30024739";
 const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
 const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
-const LIVE={ok:false,updated:0,delays:{},pos:{},sched:{},err:"connecting…",inflight:false,lastAttempt:0};
+const LIVE={ok:false,updated:0,delays:{},byStop:{},pos:{},sched:{},err:"connecting…",inflight:false,lastAttempt:0};
 let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
 
 async function fetchJson(url){
@@ -234,8 +234,10 @@ async function refreshLive(){
     fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
   ]);
   let any=false;
-  const delays={},sched={};
-  for(const res of results.slice(0,2)){
+  const delays={},sched={},byStop={};
+  const stationOf=[CFG.home,CFG.dest];
+  for(let ri=0;ri<2;ri++){
+    const res=results[ri];
     if(res.status!=="fulfilled")continue;
     const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
     for(const L of lines){
@@ -244,8 +246,13 @@ async function refreshLive(){
       const sch=parseApiTime(L.ScheduledDepartureTime);
       const comp=parseApiTime(L.ComputedDepartureTime)||sch;
       if(trip&&sch!=null){
-        const dm=Math.round((comp-sch)/60000);if(dm>-15&&dm<240){delays[trip]=dm;any=true;}
-        const sd=new Date(sch);sched[trip]={min:sd.getHours()*60+sd.getMinutes()};
+        const dm=Math.round((comp-sch)/60000);
+        if(dm>-15&&dm<240){
+          delays[trip]=dm;
+          (byStop[stationOf[ri]]=byStop[stationOf[ri]]||{})[trip]=dm;
+          any=true;
+        }
+        const sd=new Date(sch);sched[trip]={min:sd.getHours()*60+sd.getMinutes(),at:stationOf[ri]};
       }
     }
   }
@@ -260,11 +267,11 @@ async function refreshLive(){
       // must look like a vehicle record, not a stop or trip-summary that happens to carry coords
       const sc=(t.IsInMotion!==undefined?2:0)+(t.Speed!==undefined?2:0)+(t.Course!==undefined||t.Heading!==undefined?1:0)+(t.ModifiedDate!==undefined||t.LastUpdated!==undefined?1:0);
       if(trip&&lc&&isFinite(lat)&&isFinite(lon)&&lat>42.5&&lat<45&&lon<-77.5&&lon>-81.5){
-        if(score[trip]===undefined||sc>=score[trip]){pos[trip]={lat,lon,line:lc};score[trip]=sc;any=true;}
+        if(score[trip]===undefined||sc>score[trip]){pos[trip]={lat,lon,line:lc};score[trip]=sc;any=true;}
       }
     }
   }
-  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.sched=sched;LIVE.err="";}
+  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.byStop=byStop;LIVE.pos=pos;LIVE.sched=sched;LIVE.err="";}
   else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
   else{LIVE.ok=false;LIVE.err="no data returned";}
   }catch(e){LIVE.ok=false;LIVE.err="refresh failed";}
@@ -274,7 +281,7 @@ async function refreshLive(){
 // ════════ SCHEDULES ════════
 // LE between embedded stations → instant offline timetable (weekdays).
 // Anything else → day's journeys from the Schedule/Journey API, cached per day.
-const SCHED={key:"",status:"idle",trips:[],note:""};
+const SCHED={key:"",status:"idle",trips:[],note:"",lastTry:0};
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`};
 
 function embeddedTrips(fromKey,toKey){
@@ -352,14 +359,17 @@ function embeddedAvailable(fromKey,toKey){
 function withLiveExtras(base,fromKey,toKey){
   if(!LIVE.ok||!LIVE.sched)return base;
   const have=new Set(base.map(t=>t.id));
+  // trips the built-in table knows about at all (any direction) are never phantoms
+  const known=CFG.line==="LE"?new Set(LE_TRIPS.map(t=>t.id)):new Set();
   const typical=base.length
     ? Math.round(base.reduce((s,t)=>{const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];return s+(t.stops[t.stops.length-1].t-o.t)},0)/base.length)
     : 45;
   let out=base;
   for(const id in LIVE.sched){
-    if(have.has(id))continue;
+    if(have.has(id)||known.has(id))continue;
     const s=LIVE.sched[id];
     if(!s||typeof s.min!=="number")continue;
+    if(s.at!==fromKey)continue; // must depart the station we're leaving from
     if(out===base)out=base.slice();
     out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true});
   }
@@ -369,7 +379,8 @@ function withLiveExtras(base,fromKey,toKey){
 async function ensureSchedule(fromKey,toKey){
   const key=`${CFG.line}|${fromKey}|${toKey}|${todayStr()}`;
   if(SCHED.key===key&&SCHED.status!=="error")return;
-  SCHED.key=key;
+  if(SCHED.key===key&&SCHED.status==="error"&&Date.now()-SCHED.lastTry<20000)return; // throttle retries
+  SCHED.key=key;SCHED.lastTry=Date.now();
   const ck=`go_j_${key}`;
   if(embeddedAvailable(fromKey,toKey)){
     // built-in weekday timetable is authoritative for Lakeshore East;
@@ -532,12 +543,16 @@ function render(force){
   ensureSchedule(fromKey,toKey);
 
   const trips=withLiveExtras(SCHED.status==="ready"?SCHED.trips:[],fromKey,toKey)
-    .map(t=>analyze(t,fromKey,toKey,now,useLive?LIVE.delays[t.id]:undefined,useLive?LIVE.pos[t.id]&&LIVE.pos[t.id].line===CFG.line?LIVE.pos[t.id]:undefined:undefined))
+    .map(t=>{
+      const dm=useLive?((LIVE.byStop&&LIVE.byStop[fromKey]&&LIVE.byStop[fromKey][t.id]!==undefined)?LIVE.byStop[fromKey][t.id]:LIVE.delays[t.id]):undefined;
+      const gp=useLive&&LIVE.pos[t.id]&&LIVE.pos[t.id].line===CFG.line?LIVE.pos[t.id]:undefined;
+      return analyze(t,fromKey,toKey,now,dm,gp);
+    })
     .sort((a,b)=>a.dep-b.dep);
   const next=trips.find(t=>!t.departedOrigin)||null;
   const departed=trips.filter(t=>t.departedOrigin);
   const lastDeparted=departed.length?departed[departed.length-1]:null;
-  const anchorId=lastDeparted?lastDeparted.id:(trips.length?trips[0].id:null);
+  const anchorId=next?next.id:(lastDeparted?lastDeparted.id:(trips.length?trips[0].id:null));
 
   const clock=S.sim!==null?`${fmt12(now)}:00 ${ampm(now)}`:d.toLocaleTimeString("en-CA",{hour:"numeric",minute:"2-digit",second:"2-digit"});
   const corridor=stripCorridor(fromKey,toKey);
@@ -562,8 +577,8 @@ function render(force){
   const selTrip=S.openId!==null?trips.find(t=>t.id===S.openId):null;
 
   let heroHtml;
-  if(SCHED.status==="loading"){heroHtml=`<div class="empty">Loading today's ${esc(LINES[CFG.line].name)} schedule…</div>`}
-  else if(SCHED.status==="error"){heroHtml=`<div class="empty">${esc(SCHED.note)} <span data-action="retrysched" style="text-decoration:underline;cursor:pointer">Retry</span></div>`}
+  if(SCHED.status==="loading"&&!trips.length){heroHtml=`<div class="empty">Loading today's ${esc(LINES[CFG.line].name)} schedule…</div>`}
+  else if(SCHED.status==="error"&&!trips.length){heroHtml=`<div class="empty">${esc(SCHED.note)} <span data-action="retrysched" style="text-decoration:underline;cursor:pointer">Retry</span></div>`}
   else if(next){
     const delayed=next.delay!==undefined&&next.delay>=2;
     heroHtml=`
@@ -612,7 +627,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v8</span>
+          <span class="verstamp">v10</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -675,8 +690,8 @@ function render(force){
       </div>`;
     }
 
-    const histDivider=(anchorId&&t.id===anchorId&&departed.length>1)
-      ?`<div class="divider">▲ ${departed.length-1} earlier train${departed.length>2?"s":""} — scroll up</div>`:"";
+    const histDivider=(anchorId&&t.id===anchorId&&departed.length>0)
+      ?`<div class="divider">▲ ${departed.length} earlier train${departed.length>1?"s":""} — scroll up</div>`:"";
 
     return histDivider+`<div class="trip ${open?"open":isNext?"next":""} ${!open&&t.departedOrigin&&t.phase==="done"?"faded":""}" data-action="open" data-id="${esc(t.id)}" role="button" tabindex="0">
       <div class="row" style="align-items:flex-start">
@@ -708,8 +723,9 @@ function render(force){
         <span class="l">${esc(LINES[CFG.line].name).toUpperCase()} · DEPARTING ${esc(fromName).toUpperCase()}</span>
         <span class="r">${SCHED.status==="ready"?trips.length+" today"+(SCHED.note?" · "+SCHED.note:" · tap to track"):""}</span>
       </div>
-      ${SCHED.status==="loading"?`<div class="notice">Loading today's schedule for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
-      ${SCHED.status==="error"?`<div class="notice">${esc(SCHED.note)}<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Retry</button></div>`:""}
+      ${SCHED.status==="loading"&&!trips.length?`<div class="notice">Loading today's schedule for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
+      ${SCHED.status==="error"&&!trips.length?`<div class="notice">${esc(SCHED.note)}<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Retry</button></div>`:""}
+      ${SCHED.status==="error"&&trips.length?`<div class="notice" style="padding:10px;font-size:12px">Timetable unavailable — showing ${trips.length} departure${trips.length>1?"s":""} from the live feed only.</div>`:""}
       ${rows}
     </div>
 
@@ -722,7 +738,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v8 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v10 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -774,7 +790,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLiv
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v8",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v10",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
