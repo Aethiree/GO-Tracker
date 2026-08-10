@@ -118,6 +118,12 @@ const LINES={
 
 // ════════ CONFIG — persists across launches ════════
 const DEFAULT_CFG={line:"LE",home:"PIN",dest:"UN"};
+try{ // v8: purge journey caches poisoned by the old parser
+  if(localStorage.getItem("go_purge")!=="v8"){
+    for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_"))localStorage.removeItem(k)}
+    localStorage.setItem("go_purge","v8");
+  }
+}catch(e){}
 let CFG=DEFAULT_CFG;
 try{const c=JSON.parse(localStorage.getItem("go_cfg")||"null");if(c&&LINES[c.line])CFG={...DEFAULT_CFG,...c}}catch(e){}
 function saveCfg(){try{localStorage.setItem("go_cfg",JSON.stringify(CFG))}catch(e){}}
@@ -158,7 +164,7 @@ const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
 const DEMO_KEY="30024739";
 const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
 const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
-const LIVE={ok:false,updated:0,delays:{},pos:{},err:"connecting…",inflight:false,lastAttempt:0};
+const LIVE={ok:false,updated:0,delays:{},pos:{},sched:{},err:"connecting…",inflight:false,lastAttempt:0};
 let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
 
 async function fetchJson(url){
@@ -228,7 +234,7 @@ async function refreshLive(){
     fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
   ]);
   let any=false;
-  const delays={};
+  const delays={},sched={};
   for(const res of results.slice(0,2)){
     if(res.status!=="fulfilled")continue;
     const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
@@ -237,7 +243,10 @@ async function refreshLive(){
       const trip=String(L.TripNumber||"").replace(/\D/g,"");
       const sch=parseApiTime(L.ScheduledDepartureTime);
       const comp=parseApiTime(L.ComputedDepartureTime)||sch;
-      if(trip&&sch!=null){const dm=Math.round((comp-sch)/60000);if(dm>-15&&dm<240){delays[trip]=dm;any=true;}}
+      if(trip&&sch!=null){
+        const dm=Math.round((comp-sch)/60000);if(dm>-15&&dm<240){delays[trip]=dm;any=true;}
+        const sd=new Date(sch);sched[trip]={min:sd.getHours()*60+sd.getMinutes()};
+      }
     }
   }
   const pos={};
@@ -255,7 +264,7 @@ async function refreshLive(){
       }
     }
   }
-  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.err="";}
+  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.pos=pos;LIVE.sched=sched;LIVE.err="";}
   else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
   else{LIVE.ok=false;LIVE.err="no data returned";}
   }catch(e){LIVE.ok=false;LIVE.err="refresh failed";}
@@ -340,21 +349,42 @@ function embeddedAvailable(fromKey,toKey){
   return CFG.line==="LE"&&d>=1&&d<=5&&le.includes(fromKey)&&le.includes(toKey);
 }
 
+function withLiveExtras(base,fromKey,toKey){
+  if(!LIVE.ok||!LIVE.sched)return base;
+  const have=new Set(base.map(t=>t.id));
+  const typical=base.length
+    ? Math.round(base.reduce((s,t)=>{const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];return s+(t.stops[t.stops.length-1].t-o.t)},0)/base.length)
+    : 45;
+  let out=base;
+  for(const id in LIVE.sched){
+    if(have.has(id))continue;
+    const s=LIVE.sched[id];
+    if(!s||typeof s.min!=="number")continue;
+    if(out===base)out=base.slice();
+    out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true});
+  }
+  return out===base?base:out.sort((a,b)=>a.stops[0].t-b.stops[0].t);
+}
+
 async function ensureSchedule(fromKey,toKey){
   const key=`${CFG.line}|${fromKey}|${toKey}|${todayStr()}`;
   if(SCHED.key===key&&SCHED.status!=="error")return;
   SCHED.key=key;
   const ck=`go_j_${key}`;
-  try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
   if(embeddedAvailable(fromKey,toKey)){
-    // instant: show the built-in timetable now, refine with live API data when it lands
-    SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="built-in times";render();
-  }else{
-    SCHED.status="loading";SCHED.trips=[];render();
+    // built-in weekday timetable is authoritative for Lakeshore East;
+    // the live feed fills in any train missing from it (see withLiveExtras)
+    SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="";render();
+    return;
   }
+  try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
+  SCHED.status="loading";SCHED.trips=[];render();
   try{
     const j=await fetchJson(`${API_BASE}/Schedule/Journey/${todayStr()}/${apiCode(fromKey)}/${apiCode(toKey)}/0000/300?key=${getKey()}`);
-    const trips=enrichLE(parseJourneys(j,fromKey,toKey),fromKey,toKey);
+    let trips=parseJourneys(j,fromKey,toKey);
+    const durs=trips.map(t=>t.stops[t.stops.length-1].t-t.stops[0].t).sort((a,b)=>a-b);
+    const med=durs.length?durs[Math.floor(durs.length/2)]:0;
+    if(trips.length<4||med<8||med>210)trips=[]; // implausible → discard
     if(SCHED.key!==key)return; // user changed route meanwhile
     if(trips.length){
       SCHED.status="ready";SCHED.trips=trips;SCHED.note="";S.needScroll=true;
@@ -501,7 +531,7 @@ function render(force){
 
   ensureSchedule(fromKey,toKey);
 
-  const trips=(SCHED.status==="ready"?SCHED.trips:[])
+  const trips=withLiveExtras(SCHED.status==="ready"?SCHED.trips:[],fromKey,toKey)
     .map(t=>analyze(t,fromKey,toKey,now,useLive?LIVE.delays[t.id]:undefined,useLive?LIVE.pos[t.id]&&LIVE.pos[t.id].line===CFG.line?LIVE.pos[t.id]:undefined:undefined))
     .sort((a,b)=>a.dep-b.dep);
   const next=trips.find(t=>!t.departedOrigin)||null;
@@ -582,7 +612,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v7</span>
+          <span class="verstamp">v8</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -692,7 +722,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v7 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v8 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -744,7 +774,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLiv
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v7",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v8",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
