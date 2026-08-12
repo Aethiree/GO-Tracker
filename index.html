@@ -242,8 +242,14 @@ async function refreshLive(){
     const res=results[ri];
     if(res.status!=="fulfilled")continue;
     const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
+    const lineNamesNS=new Set(lineStations().map(s=>norm(s[1])));
     for(const L of lines){
-      if(String(L.LineCode||"").toUpperCase()!==CFG.line)continue;
+      const nlc=String(L.LineCode||"").toUpperCase();
+      if(nlc){ if(nlc!==CFG.line)continue }
+      else{
+        const dest=norm(L.DestinationName||L.Destination||L.DirectionName||"");
+        if(!dest||!lineNamesNS.has(dest))continue;
+      }
       const trip=String(L.TripNumber||"").replace(/\D/g,"");
       const sch=parseApiTime(L.ScheduledDepartureTime);
       const comp=parseApiTime(L.ComputedDepartureTime)||sch;
@@ -270,9 +276,17 @@ async function refreshLive(){
       if(trip&&tm)recs.push(o);
       for(const k in o)walk(o[k]);
     })(results[3].value);
+    // station names on our line, for verifying records that omit LineCode
+    const lineNames=new Set(lineStations().map(s=>norm(s[1])));
     for(const r of recs){
       const lc=String(r.LineCode||r.Line||"").toUpperCase();
-      if(lc&&lc!==CFG.line)continue;
+      if(lc){
+        if(lc!==CFG.line)continue;                 // explicit line code must match
+      }else{
+        // no line code — the destination must be a station on this line
+        const dest=norm(r.DestinationName||r.Destination||r.DirectionName||r.TripDestination||r.Direction||"");
+        if(!dest||!lineNames.has(dest))continue;
+      }
       const trip=String(r.TripNumber||r.Trip||"").replace(/\D/g,"");
       if(!trip)continue;
       const raw=r.ScheduledDepartureTime||r.ScheduledTime||r.DepartureTime||r.Time;
@@ -420,11 +434,15 @@ function withLiveExtras(base,fromKey,toKey){
     if(Math.abs(shift)>90)return t; // implausible → keep built-in times
     return {...t,stops:t.stops.map(x=>({...x,t:x.t+shift})),liveTimed:true,plat:s.plat};
   });
+  // trip-number families actually used on this line (e.g. LE uses 9xxx) — anything
+  // outside them in the feed belongs to another line and must not be invented as ours
+  const fams=new Set(base.filter(t=>/^\d{3,4}$/.test(t.id)).map(t=>t.id.length+":"+t.id[0]));
   for(const id in LIVE.sched){
     if(seen.has(id)||wrongWay.has(id))continue;
     const s=LIVE.sched[id];
     if(!s||typeof s.min!=="number"||s.at!==fromKey)continue;
     if(out.some(t=>t.id===id))continue;
+    if(fams.size&&/^\d{3,4}$/.test(id)&&!fams.has(id.length+":"+id[0]))continue;
     out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true,liveTimed:true,plat:s.plat});
   }
   // a live-timed train can collide with a built-in one that no longer exists — drop the
@@ -690,7 +708,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v12</span>
+          <span class="verstamp">v13</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -801,7 +819,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v12 (2026-08-12). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v13 (2026-08-12). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -853,7 +871,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLiv
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v12",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v13",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
