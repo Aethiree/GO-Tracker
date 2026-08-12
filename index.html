@@ -228,10 +228,12 @@ async function refreshLive(){
   try{
   if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";return}
   const key=getKey();
+  const unionInvolved=apiCode(CFG.home)==="UN"||apiCode(CFG.dest)==="UN";
   const results=await Promise.allSettled([
     fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.home)}?key=${key}`),
     fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.dest)}?key=${key}`),
     fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
+    unionInvolved?fetchJson(`${API_BASE}/ServiceUpdate/UnionDepartures/All?key=${key}`):Promise.reject(new Error("skip")),
   ]);
   let any=false;
   const delays={},sched={},byStop={};
@@ -256,6 +258,35 @@ async function refreshLive(){
       }
     }
   }
+  // Union departure board — the same source GO Tracker's Union page uses. It lists every
+  // departure (not just the next few across all lines), so it's the authority at Union.
+  if(results[3]&&results[3].status==="fulfilled"){
+    const recs=[];
+    (function walk(o){
+      if(!o||typeof o!=="object")return;
+      if(Array.isArray(o)){o.forEach(walk);return}
+      const trip=o.TripNumber||o.Trip;
+      const tm=o.ScheduledDepartureTime||o.ScheduledTime||o.DepartureTime||o.Time;
+      if(trip&&tm)recs.push(o);
+      for(const k in o)walk(o[k]);
+    })(results[3].value);
+    for(const r of recs){
+      const lc=String(r.LineCode||r.Line||"").toUpperCase();
+      if(lc&&lc!==CFG.line)continue;
+      const trip=String(r.TripNumber||r.Trip||"").replace(/\D/g,"");
+      if(!trip)continue;
+      const raw=r.ScheduledDepartureTime||r.ScheduledTime||r.DepartureTime||r.Time;
+      const t=parseApiTime(raw);
+      const mn=t!=null?(()=>{const d=new Date(t);return d.getHours()*60+d.getMinutes()})():minOfDay(raw);
+      if(mn==null)continue;
+      const plat=String(r.Platform||r.PlatformNumber||r.Pltfrm||"").trim();
+      sched[trip]={min:mn,at:"UN",plat:plat||undefined};
+      const ct=parseApiTime(r.ComputedDepartureTime||r.ActualDepartureTime||"");
+      if(ct!=null&&t!=null){const dm=Math.round((ct-t)/60000);if(dm>-15&&dm<240){delays[trip]=dm;(byStop.UN=byStop.UN||{})[trip]=dm;}}
+      any=true;
+    }
+  }
+
   const pos={};
   if(results[2].status==="fulfilled"){
     const v=[];harvestVehicles(results[2].value,v);
@@ -356,24 +387,56 @@ function embeddedAvailable(fromKey,toKey){
   return CFG.line==="LE"&&d>=1&&d<=5&&le.includes(fromKey)&&le.includes(toKey);
 }
 
+// Trips the built-in table runs in the OPPOSITE direction — a sighting of these at our
+// origin is a feed artefact, not a real departure (e.g. Union-bound 9225 seen at Pickering).
+function oppositeDirTrips(fromKey,toKey){
+  const s=new Set();
+  if(CFG.line!=="LE")return s;
+  const stns=lineStations().map(x=>x[0]);
+  const fwd=stns.indexOf(toKey)>stns.indexOf(fromKey); // our direction
+  for(const t of LE_TRIPS){
+    const a=stns.indexOf(t.stops[0].key), b=stns.indexOf(t.stops[t.stops.length-1].key);
+    if((b>a)!==fwd)s.add(t.id);
+  }
+  return s;
+}
+
+// The live feed is the authority on departure times. Where it reports a scheduled
+// departure from our origin, shift that trip to match; add trains it knows and we don't.
 function withLiveExtras(base,fromKey,toKey){
   if(!LIVE.ok||!LIVE.sched)return base;
-  const have=new Set(base.map(t=>t.id));
-  // trips the built-in table knows about at all (any direction) are never phantoms
-  const known=CFG.line==="LE"?new Set(LE_TRIPS.map(t=>t.id)):new Set();
+  const wrongWay=oppositeDirTrips(fromKey,toKey);
   const typical=base.length
     ? Math.round(base.reduce((s,t)=>{const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];return s+(t.stops[t.stops.length-1].t-o.t)},0)/base.length)
-    : 45;
-  let out=base;
+    : 44;
+  const seen=new Set();
+  let out=base.map(t=>{
+    const s=LIVE.sched[t.id];
+    if(!s||s.at!==fromKey||typeof s.min!=="number")return t;
+    seen.add(t.id);
+    const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];
+    const shift=s.min-o.t;
+    if(!shift)return s.plat?{...t,liveTimed:true,plat:s.plat}:{...t,liveTimed:true};
+    if(Math.abs(shift)>90)return t; // implausible → keep built-in times
+    return {...t,stops:t.stops.map(x=>({...x,t:x.t+shift})),liveTimed:true,plat:s.plat};
+  });
   for(const id in LIVE.sched){
-    if(have.has(id)||known.has(id))continue;
+    if(seen.has(id)||wrongWay.has(id))continue;
     const s=LIVE.sched[id];
-    if(!s||typeof s.min!=="number")continue;
-    if(s.at!==fromKey)continue; // must depart the station we're leaving from
-    if(out===base)out=base.slice();
-    out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true});
+    if(!s||typeof s.min!=="number"||s.at!==fromKey)continue;
+    if(out.some(t=>t.id===id))continue;
+    out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true,liveTimed:true,plat:s.plat});
   }
-  return out===base?base:out.sort((a,b)=>a.stops[0].t-b.stops[0].t);
+  // a live-timed train can collide with a built-in one that no longer exists — drop the
+  // built-in duplicate when another train departs within a minute of it
+  const live=out.filter(t=>t.liveTimed);
+  if(live.length){
+    out=out.filter(t=>t.liveTimed||!live.some(l=>Math.abs((l.stops.find(x=>x.key===fromKey)||l.stops[0]).t-(t.stops.find(x=>x.key===fromKey)||t.stops[0]).t)<=1));
+  }
+  return out.sort((a,b)=>{
+    const A=(a.stops.find(x=>x.key===fromKey)||a.stops[0]).t, B=(b.stops.find(x=>x.key===fromKey)||b.stops[0]).t;
+    return A-B;
+  });
 }
 
 async function ensureSchedule(fromKey,toKey){
@@ -500,7 +563,7 @@ function analyze(trip,fromKey,toKey,now,delayMin,gps){
   return {id:trip.id,stops:st,dep:origin.t,arr:last.t,schedDep:origin.sched,dur:last.t-origin.t,
     minsToDep:origin.t-now,departedOrigin:now>=origin.t,phase,pos,segIdx,segFrac,overall,
     originFrac:(last.t-first.t)>0?(origin.t-first.t)/(last.t-first.t):0,
-    delay:delayMin,liveGps,transfer:trip.transfer,approx:trip.approx};
+    delay:delayMin,liveGps,transfer:trip.transfer,approx:trip.approx,liveTimed:!!trip.liveTimed,plat:trip.plat};
 }
 function chip(t){
   if(!t.departedOrigin&&t.minsToDep<=4&&t.phase==="moving")return["BOARDING","var(--amber)","#1A1405"];
@@ -627,7 +690,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v10</span>
+          <span class="verstamp">v12</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -707,7 +770,7 @@ function render(force){
         </div>
       </div>
       <div class="t-foot">
-        <span style="color:var(--sub)">${/^\d+$/.test(t.id)?`Train <b style="color:var(--ink)">${t.id}</b> · `:""}${t.dur} min${t.transfer?" · transfer":""}${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
+        <span style="color:var(--sub)">${/^\d+$/.test(t.id)?`Train <b style="color:var(--ink)">${t.id}</b> · `:""}${t.dur} min${t.transfer?" · transfer":""}${t.plat?` · Pltf <b style="color:var(--ink)">${esc(t.plat)}</b>`:""}${t.liveTimed?' · <b style="color:var(--green-dk)">LIVE</b>':""}${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
         <span class="pos" style="color:${t.departedOrigin?"var(--sub)":"var(--green-dk)"}">${footRight}</span>
       </div>
       ${t.phase!=="pre"?`<div class="pbar"><div class="fill" style="width:${Math.round(t.overall*100)}%;${t.phase==="done"?"opacity:.35":""}"></div><div class="tick" style="left:${Math.round(t.originFrac*100)}%"></div>${t.phase==="moving"?`<div class="mark${t.liveGps?" gps":""}" style="left:${(t.overall*100).toFixed(1)}%"></div>`:""}</div>`:""}
@@ -738,7 +801,7 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v10 (2026-08-10). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v12 (2026-08-12). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
@@ -790,7 +853,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLiv
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v10",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v12",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
