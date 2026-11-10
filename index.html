@@ -42,6 +42,11 @@
   .live{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:2px;font-weight:700}
   .dot{width:7px;height:7px;border-radius:99px;animation:pulse 1.6s infinite}
   .eyebrow{color:#7E957F;font-size:11px;letter-spacing:1.5px}
+  .srcline{font-size:10.5px;line-height:1.35;margin-top:9px;text-align:center;color:#8FA890}
+  .srcline.ok{color:#8FCB9B}
+  .srcline.warn{color:#E8B84B}
+  .srcline.bad{color:#FFB199;text-align:left;background:#2A1712;border:1px solid #5A2A1E;border-radius:8px;padding:7px 9px}
+  .srcline b{color:#fff}
   .verstamp{font-family:var(--mono);font-size:9.5px;color:#6B856F;letter-spacing:.5px;border:1px solid var(--board-line);border-radius:5px;padding:1px 4px}
   .miniclock{font-family:var(--mono);color:var(--led);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgba(159,230,160,.3)}
   .dir{color:#E8F2E6;font-size:15px;font-weight:700}
@@ -104,26 +109,20 @@
 <div id="app"></div>
 <script>
 "use strict";
-// ════════ GO NETWORK — lines & stations (Union first; coords are fallbacks, refined live from Stop/All) ════════
+// ════════ GO NETWORK — lines & stations (Union first; keys are Metrolinx's own stop codes) ════════
 const LINES={
- LE:{name:"Lakeshore East",st:[["UN","Union",43.6456,-79.3795],["DA","Danforth",43.6863,-79.3025],["SC","Scarborough",43.7163,-79.2563],["EG","Eglinton",43.7394,-79.2322],["GU","Guildwood",43.7550,-79.1980],["RO","Rouge Hill",43.7802,-79.1302],["PIN","Pickering",43.8311,-79.0857],["AJ","Ajax",43.8484,-79.0416],["WH","Whitby",43.8648,-78.9380],["OS","Oshawa",43.8708,-78.8847]]},
- LW:{name:"Lakeshore West",st:[["UN","Union",43.6456,-79.3795],["EX","Exhibition",43.6359,-79.4192],["MI","Mimico",43.6164,-79.4972],["LO","Long Branch",43.5919,-79.5456],["PO","Port Credit",43.5560,-79.5870],["CL","Clarkson",43.5130,-79.6340],["OA","Oakville",43.4550,-79.6820],["BO","Bronte",43.3970,-79.7130],["AP","Appleby",43.3780,-79.7560],["BU","Burlington",43.3410,-79.8090],["AL","Aldershot",43.3130,-79.8550],["WR","West Harbour (Hamilton)",43.2690,-79.8660],["SCTH","St. Catharines",43.1560,-79.2440],["NI","Niagara Falls",43.1080,-79.0630]]},
- MI:{name:"Milton",st:[["UN","Union",43.6456,-79.3795],["KP","Kipling",43.6370,-79.5350],["DI","Dixie",43.6100,-79.5780],["CO","Cooksville",43.5750,-79.6250],["ER","Erindale",43.5550,-79.6650],["SR","Streetsville",43.5720,-79.7080],["ME","Meadowvale",43.5950,-79.7540],["LS","Lisgar",43.5780,-79.7850],["ML","Milton",43.5230,-79.8700]]},
- KI:{name:"Kitchener",st:[["UN","Union",43.6456,-79.3795],["BL","Bloor",43.6560,-79.4520],["WE","Weston",43.7000,-79.5140],["ET","Etobicoke North",43.7060,-79.5470],["MA","Malton",43.7050,-79.6370],["BE","Bramalea",43.7090,-79.6960],["BA","Brampton",43.6860,-79.7600],["MO","Mount Pleasant",43.6750,-79.8230],["GE","Georgetown",43.6490,-79.9180],["AC","Acton",43.6330,-80.0430],["GL","Guelph",43.5450,-80.2470],["KIT","Kitchener",43.4560,-80.4940]]},
- BR:{name:"Barrie",st:[["UN","Union",43.6456,-79.3795],["DW","Downsview Park",43.7530,-79.4780],["RU","Rutherford",43.8230,-79.5340],["MP","Maple",43.8610,-79.5080],["KC","King City",43.9200,-79.5240],["AU","Aurora",43.9910,-79.4600],["NE","Newmarket",44.0560,-79.4610],["EA","East Gwillimbury",44.0780,-79.4550],["BD","Bradford",44.1150,-79.5610],["BAS","Barrie South",44.3370,-79.6360],["AW","Allandale Waterfront",44.3740,-79.6890]]},
- RH:{name:"Richmond Hill",st:[["UN","Union",43.6456,-79.3795],["OR","Oriole",43.7660,-79.3620],["OL","Old Cummer",43.7970,-79.3640],["LA","Langstaff",43.8400,-79.4270],["RI","Richmond Hill",43.8700,-79.4270],["GRM","Gormley",43.9430,-79.4050],["BM","Bloomington",43.9890,-79.3940]]},
- ST:{name:"Stouffville",st:[["UN","Union",43.6456,-79.3795],["KE","Kennedy",43.7320,-79.2660],["AG","Agincourt",43.7880,-79.2840],["MK","Milliken",43.8230,-79.3020],["UI","Unionville",43.8520,-79.3140],["CE","Centennial",43.8700,-79.3200],["MR","Markham",43.8800,-79.2630],["MJ","Mount Joy",43.9020,-79.2640],["SF","Stouffville",43.9710,-79.2460],["OE","Old Elm",43.9840,-79.2260]]},
+ LE:{name:"Lakeshore East",dirs:["E","W"],st:[["UN","Union",43.6456,-79.3795],["DA","Danforth",43.6863,-79.3025],["SC","Scarborough",43.7163,-79.2563],["EG","Eglinton",43.7394,-79.2322],["GU","Guildwood",43.7550,-79.1980],["RO","Rouge Hill",43.7802,-79.1302],["PIN","Pickering",43.8311,-79.0857],["AJ","Ajax",43.8484,-79.0416],["WH","Whitby",43.8648,-78.9380],["OS","Oshawa",43.8708,-78.8847]]},
+ LW:{name:"Lakeshore West",dirs:["E","W"],st:[["UN","Union",43.6456,-79.3795],["EX","Exhibition",43.6359,-79.4192],["MI","Mimico",43.6164,-79.4972],["LO","Long Branch",43.5919,-79.5456],["PO","Port Credit",43.5560,-79.5870],["CL","Clarkson",43.5130,-79.6340],["OA","Oakville",43.4550,-79.6820],["BO","Bronte",43.3970,-79.7130],["AP","Appleby",43.3780,-79.7560],["BU","Burlington",43.3410,-79.8090],["AL","Aldershot",43.3130,-79.8550],["WR","West Harbour (Hamilton)",43.2690,-79.8660],["SCTH","St. Catharines",43.1560,-79.2440],["NI","Niagara Falls",43.1080,-79.0630]]},
+ MI:{name:"Milton",dirs:["E","W"],st:[["UN","Union",43.6456,-79.3795],["KP","Kipling",43.6370,-79.5350],["DI","Dixie",43.6100,-79.5780],["CO","Cooksville",43.5750,-79.6250],["ER","Erindale",43.5550,-79.6650],["SR","Streetsville",43.5720,-79.7080],["ME","Meadowvale",43.5950,-79.7540],["LS","Lisgar",43.5780,-79.7850],["ML","Milton",43.5230,-79.8700]]},
+ KI:{name:"Kitchener",dirs:["E","W"],st:[["UN","Union",43.6456,-79.3795],["BL","Bloor",43.6560,-79.4520],["WE","Weston",43.7000,-79.5140],["ET","Etobicoke North",43.7060,-79.5470],["MA","Malton",43.7050,-79.6370],["BE","Bramalea",43.7090,-79.6960],["BR","Brampton",43.6860,-79.7600],["MO","Mount Pleasant",43.6750,-79.8230],["GE","Georgetown",43.6490,-79.9180],["AC","Acton",43.6330,-80.0430],["GL","Guelph",43.5450,-80.2470],["KI","Kitchener",43.4560,-80.4940]]},
+ BR:{name:"Barrie",dirs:["N","S"],st:[["UN","Union",43.6456,-79.3795],["DW","Downsview Park",43.7530,-79.4780],["RU","Rutherford",43.8230,-79.5340],["MP","Maple",43.8610,-79.5080],["KC","King City",43.9200,-79.5240],["AU","Aurora",43.9910,-79.4600],["NE","Newmarket",44.0560,-79.4610],["EA","East Gwillimbury",44.0780,-79.4550],["BD","Bradford",44.1150,-79.5610],["BA","Barrie South",44.3370,-79.6360],["AD","Allandale Waterfront",44.3740,-79.6890]]},
+ RH:{name:"Richmond Hill",dirs:["N","S"],st:[["UN","Union",43.6456,-79.3795],["OR","Oriole",43.7660,-79.3620],["OL","Old Cummer",43.7970,-79.3640],["LA","Langstaff",43.8400,-79.4270],["RI","Richmond Hill",43.8700,-79.4270],["GO","Gormley",43.9430,-79.4050],["BM","Bloomington",43.9890,-79.3940]]},
+ ST:{name:"Stouffville",dirs:["N","S"],st:[["UN","Union",43.6456,-79.3795],["KE","Kennedy",43.7320,-79.2660],["AG","Agincourt",43.7880,-79.2840],["MK","Milliken",43.8230,-79.3020],["UI","Unionville",43.8520,-79.3140],["CE","Centennial",43.8700,-79.3200],["MR","Markham",43.8800,-79.2630],["MJ","Mount Joy",43.9020,-79.2640],["ST","Stouffville",43.9710,-79.2460],["LI","Old Elm",43.9840,-79.2260]]},
  UP:{name:"UP Express",st:[["UN","Union",43.6456,-79.3795],["BL","Bloor",43.6560,-79.4520],["WE","Weston",43.7000,-79.5140],["PA","Pearson Airport",43.6831,-79.6136]]},
 };
 
 // ════════ CONFIG — persists across launches ════════
 const DEFAULT_CFG={line:"LE",home:"PIN",dest:"UN"};
-try{ // v8: purge journey caches poisoned by the old parser
-  if(localStorage.getItem("go_purge")!=="v8"){
-    for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_"))localStorage.removeItem(k)}
-    localStorage.setItem("go_purge","v8");
-  }
-}catch(e){}
 let CFG=DEFAULT_CFG;
 try{const c=JSON.parse(localStorage.getItem("go_cfg")||"null");if(c&&LINES[c.line])CFG={...DEFAULT_CFG,...c}}catch(e){}
 function saveCfg(){try{localStorage.setItem("go_cfg",JSON.stringify(CFG))}catch(e){}}
@@ -136,14 +135,11 @@ function ensureCfgValid(){
 }
 ensureCfgValid();
 
-// resolved API codes & coords (refined from Stop/All)
-let STOPDB={}; try{STOPDB=JSON.parse(localStorage.getItem("go_stops")||"{}")}catch(e){}
 const norm=s=>String(s||"").toLowerCase().replace(/\bgo\b|\bstation\b|\(.*?\)/g,"").replace(/[^a-z]/g,"");
-function apiCode(key){const s=stByKey(key);if(!s)return key;const hit=STOPDB[norm(s[1])];return (hit&&hit.code)||key}
-function coordOf(key){const s=stByKey(key);if(!s)return[0,0];const hit=STOPDB[norm(s[1])];return hit&&isFinite(hit.lat)?[hit.lat,hit.lon]:[s[2],s[3]]}
+function coordOf(key){const s=stByKey(key);return s?[s[2],s[3]]:[0,0]}
 const nameOf=k=>{const s=stByKey(k);return s?s[1]:k};
 
-// ════════ LAKESHORE EAST embedded weekday timetable (instant + offline) ════════
+// ════════ LAKESHORE EAST built-in weekday table — an OLD schedule, used only when Metrolinx can't be reached ════════
 const WBS=["OS","WH","AJ","PIN","RO","GU","EG","SC","DA","UN"];
 const EBS=["UN","DA","SC","EG","GU","RO","PIN"];
 const WB_A=[0,5,13,18,25,33,38,43,49,63], WB_B=[0,5,13,18,26,34,39,44,50,64];
@@ -159,13 +155,25 @@ const LE_TRIPS=[
  ...[["9330","19:50"],["9032","20:20"],["9332","20:50"],["9134","21:20"],["9334","21:50"],["9136","22:20"],["9336","22:50"],["9138","23:22"],["9338","23:50"]].map(([i,t])=>mk(i,t,EB_P,EBS)),
 ];
 
-// ════════ LIVE DATA — Metrolinx GO Open Data API ════════
+// ════════ DATA — Metrolinx GO Open Data API (the feed behind gotracker.ca) ════════
+// Field names below follow the API's real responses:
+//   Schedule/Line/{yyyymmdd}/{line}/{dir} → Lines.Line[].Trip[]{Number,Display,Stops[]{Code,Order,Time}}
+//   Stop/NextService/{stop}               → NextService.Lines[]{LineCode,DirectionName,TripNumber,
+//                                           ScheduledDepartureTime,ComputedDepartureTime,ScheduledPlatform,ActualPlatform}
+//   ServiceUpdate/UnionDepartures/All     → AllDepartures.Trip[]{TripNumber,Service,ServiceType,Time,Platform,Info,Stops[]{Name}}
+//   ServiceataGlance/Trains/All           → Trips.Trip[]{TripNumber,LineCode,DelaySeconds,Latitude,Longitude,
+//                                           AtStationCode,NextStopCode,PrevStopCode,IsInMotion,ModifiedDate}
 const API_BASE="https://api.openmetrolinx.com/OpenDataAPI/api/V1";
 const DEMO_KEY="30024739";
 const PROXIES=["","https://corsproxy.io/?url=","https://api.allorigins.win/raw?url="];
 const getKey=()=>{try{return localStorage.getItem("le_key")||DEMO_KEY}catch(e){return DEMO_KEY}};
-const LIVE={ok:false,updated:0,delays:{},byStop:{},pos:{},sched:{},err:"connecting…",inflight:false,lastAttempt:0};
 let proxyIdx=0; try{proxyIdx=Math.min(2,parseInt(localStorage.getItem("le_proxy")||"0")||0)}catch(e){}
+try{ // v14: drop caches written by older builds
+  if(localStorage.getItem("go_purge")!=="v14"){
+    for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&(k.startsWith("go_j_")||k==="go_stops"))localStorage.removeItem(k)}
+    localStorage.setItem("go_purge","v14");
+  }
+}catch(e){}
 
 async function fetchJson(url){
   const tried=new Set();
@@ -173,327 +181,287 @@ async function fetchJson(url){
     if(tried.has(p))continue; tried.add(p);
     try{
       const u=PROXIES[p]?PROXIES[p]+encodeURIComponent(url):url;
-      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),5000);
+      const ctrl=new AbortController(); const tm=setTimeout(()=>ctrl.abort(),7000);
       const r=await fetch(u,{cache:"no-store",signal:ctrl.signal});
       clearTimeout(tm);
+      if(r.status===204)return {};               // "no content" is a valid, empty answer
       if(!r.ok)throw new Error("http "+r.status);
       const j=await r.json();
+      if(!j||typeof j!=="object"||!j.Metadata)throw new Error("not a Metrolinx response");
+      const ec=j.Metadata.ErrorCode;
+      if(ec&&String(ec)!=="200"&&String(ec)!=="204")throw new Error("api "+ec);
       proxyIdx=p; try{localStorage.setItem("le_proxy",String(p))}catch(e){}
       return j;
     }catch(e){}
   }
   throw new Error("unreachable");
 }
+const arr=x=>x==null?[]:Array.isArray(x)?x:[x];
 const parseApiTime=s=>{
   if(!s)return null;
   const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
   if(!m)return null;
   return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0)).getTime();
 };
-const minOfDay=s=>{ // accepts "YYYY-MM-DD HH:MM:SS", "HH:MM", "HHMM"
-  if(s==null)return null; s=String(s);
-  let m=s.match(/[ T](\d{2}):(\d{2})/)||s.match(/^(\d{1,2}):(\d{2})/);
-  if(m)return +m[1]*60+ +m[2];
-  m=s.match(/^(\d{2})(\d{2})$/);
-  if(m)return +m[1]*60+ +m[2];
-  return null;
-};
-function harvestVehicles(o,out){
-  if(!o||typeof o!=="object")return;
-  if(Array.isArray(o)){for(const x of o)harvestVehicles(x,out);return}
-  if(o.Latitude!==undefined&&o.Longitude!==undefined)out.push(o);
-  for(const k in o)harvestVehicles(o[k],out);
+
+// GO's service day runs past midnight: before 3 AM we are still on yesterday's timetable.
+// All times in the app are minutes since the service day's midnight (so 12:20 AM = 1460).
+function svc(){
+  const d=new Date();
+  const late=d.getHours()<3;
+  const b=new Date(d.getFullYear(),d.getMonth(),d.getDate()-(late?1:0));
+  const p2=n=>String(n).padStart(2,"0");
+  return {y:b.getFullYear(),mo:b.getMonth(),d:b.getDate(),dow:b.getDay(),
+    ymd:`${b.getFullYear()}${p2(b.getMonth()+1)}${p2(b.getDate())}`,
+    now:(late?1440:0)+d.getHours()*60+d.getMinutes()+d.getSeconds()/60,
+    label:b.toLocaleDateString("en-CA",{weekday:"short",month:"short",day:"numeric"})};
+}
+function toSvcMin(s,sv){ // "2026-11-10 16:23:00" → minutes since the service day's midnight
+  if(!s)return null;
+  const m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if(!m)return null;
+  const dayOff=Math.round((Date.UTC(+m[1],+m[2]-1,+m[3])-Date.UTC(sv.y,sv.mo,sv.d))/864e5);
+  if(dayOff<-1||dayOff>1)return null;            // not this service day
+  return dayOff*1440+ +m[4]*60+ +m[5]+ +(m[6]||0)/60;
+}
+// match a name from the feed ("Durham College Oshawa GO", "Union Station") to a station on this line
+function stnByName(n){
+  const q=norm(n); if(!q)return null;
+  const st=lineStations();
+  let hit=st.find(s=>norm(s[1])===q);
+  if(hit)return hit[0];
+  let best=null,bl=0;
+  for(const s of st){const k=norm(s[1]);if(k.length>=4&&(q.includes(k)||k.includes(q))&&k.length>bl){best=s[0];bl=k.length}}
+  return best;
 }
 
-// stations DB from Stop/All (one-time, cached) → corrects codes & coords by name
-async function loadStops(){
-  if(Object.keys(STOPDB).length)return;
-  try{
-    const j=await fetchJson(`${API_BASE}/Stop/All?key=${getKey()}`);
-    const v=[]; harvestVehicles(j,v); // stops also carry Latitude/Longitude
-    const wanted=new Set(); for(const lc in LINES)for(const s of LINES[lc].st)wanted.add(norm(s[1]));
-    const db={};
-    for(const s of v){
-      const n=norm(s.StopName||s.Name||"");
-      const code=s.Code||s.StopCode||s.LocationCode;
-      if(n&&code&&wanted.has(n)&&!db[n])db[n]={code:String(code),lat:+s.Latitude,lon:+s.Longitude};
-    }
-    if(Object.keys(db).length>3){STOPDB=db;try{localStorage.setItem("go_stops",JSON.stringify(db))}catch(e){}}
-  }catch(e){}
+// ════════ TIMETABLE — today's official schedule, re-fetched from Metrolinx ════════
+// src: "official" = fetched from Metrolinx this session · "cached" = Metrolinx, saved earlier today
+//      "builtin"  = old table shipped inside the app (only when Metrolinx can't be reached) · "none"
+const TT={key:"",all:[],src:"none",complete:false,fetched:0,lastTry:0,inflight:false,err:"",label:""};
+const TT_MAX_AGE=15*60000;
+let _builtin=null;
+function builtinAll(){
+  if(!_builtin)_builtin=LE_TRIPS.map(t=>({id:t.id,stops:t.stops.map(s=>[s.key,s.t])}));
+  return _builtin;
 }
+function builtinUsable(){const sv=svc();return CFG.line==="LE"&&sv.dow>=1&&sv.dow<=5}
 
-async function refreshLive(){
-  if(LIVE.inflight)return;
-  LIVE.inflight=true;LIVE.lastAttempt=Date.now();
-  try{
-  if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";return}
-  const key=getKey();
-  const unionInvolved=apiCode(CFG.home)==="UN"||apiCode(CFG.dest)==="UN";
-  const results=await Promise.allSettled([
-    fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.home)}?key=${key}`),
-    fetchJson(`${API_BASE}/Stop/NextService/${apiCode(CFG.dest)}?key=${key}`),
-    fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
-    unionInvolved?fetchJson(`${API_BASE}/ServiceUpdate/UnionDepartures/All?key=${key}`):Promise.reject(new Error("skip")),
-  ]);
-  let any=false;
-  const delays={},sched={},byStop={};
-  const stationOf=[CFG.home,CFG.dest];
-  for(let ri=0;ri<2;ri++){
-    const res=results[ri];
-    if(res.status!=="fulfilled")continue;
-    const lines=(res.value&&res.value.NextService&&res.value.NextService.Lines)||[];
-    const lineNamesNS=new Set(lineStations().map(s=>norm(s[1])));
-    for(const L of lines){
-      const nlc=String(L.LineCode||"").toUpperCase();
-      if(nlc){ if(nlc!==CFG.line)continue }
-      else{
-        const dest=norm(L.DestinationName||L.Destination||L.DirectionName||"");
-        if(!dest||!lineNamesNS.has(dest))continue;
-      }
-      const trip=String(L.TripNumber||"").replace(/\D/g,"");
-      const sch=parseApiTime(L.ScheduledDepartureTime);
-      const comp=parseApiTime(L.ComputedDepartureTime)||sch;
-      if(trip&&sch!=null){
-        const dm=Math.round((comp-sch)/60000);
-        if(dm>-15&&dm<240){
-          delays[trip]=dm;
-          (byStop[stationOf[ri]]=byStop[stationOf[ri]]||{})[trip]=dm;
-          any=true;
-        }
-        const sd=new Date(sch);sched[trip]={min:sd.getHours()*60+sd.getMinutes(),at:stationOf[ri]};
-      }
-    }
-  }
-  // Union departure board — the same source GO Tracker's Union page uses. It lists every
-  // departure (not just the next few across all lines), so it's the authority at Union.
-  if(results[3]&&results[3].status==="fulfilled"){
-    const recs=[];
-    (function walk(o){
-      if(!o||typeof o!=="object")return;
-      if(Array.isArray(o)){o.forEach(walk);return}
-      const trip=o.TripNumber||o.Trip;
-      const tm=o.ScheduledDepartureTime||o.ScheduledTime||o.DepartureTime||o.Time;
-      if(trip&&tm)recs.push(o);
-      for(const k in o)walk(o[k]);
-    })(results[3].value);
-    // station names on our line, for verifying records that omit LineCode
-    const lineNames=new Set(lineStations().map(s=>norm(s[1])));
-    for(const r of recs){
-      const lc=String(r.LineCode||r.Line||"").toUpperCase();
-      if(lc){
-        if(lc!==CFG.line)continue;                 // explicit line code must match
-      }else{
-        // no line code — the destination must be a station on this line
-        const dest=norm(r.DestinationName||r.Destination||r.DirectionName||r.TripDestination||r.Direction||"");
-        if(!dest||!lineNames.has(dest))continue;
-      }
-      const trip=String(r.TripNumber||r.Trip||"").replace(/\D/g,"");
-      if(!trip)continue;
-      const raw=r.ScheduledDepartureTime||r.ScheduledTime||r.DepartureTime||r.Time;
-      const t=parseApiTime(raw);
-      const mn=t!=null?(()=>{const d=new Date(t);return d.getHours()*60+d.getMinutes()})():minOfDay(raw);
-      if(mn==null)continue;
-      const plat=String(r.Platform||r.PlatformNumber||r.Pltfrm||"").trim();
-      sched[trip]={min:mn,at:"UN",plat:plat||undefined};
-      const ct=parseApiTime(r.ComputedDepartureTime||r.ActualDepartureTime||"");
-      if(ct!=null&&t!=null){const dm=Math.round((ct-t)/60000);if(dm>-15&&dm<240){delays[trip]=dm;(byStop.UN=byStop.UN||{})[trip]=dm;}}
-      any=true;
-    }
-  }
-
-  const pos={};
-  if(results[2].status==="fulfilled"){
-    const v=[];harvestVehicles(results[2].value,v);
-    const score={};
-    for(const t of v){
-      const trip=String(t.TripNumber||"").replace(/\D/g,"");
-      const lc=String(t.LineCode||t.RouteNumber||t.Line||"").toUpperCase();
-      const lat=+t.Latitude, lon=+t.Longitude;
-      // must look like a vehicle record, not a stop or trip-summary that happens to carry coords
-      const sc=(t.IsInMotion!==undefined?2:0)+(t.Speed!==undefined?2:0)+(t.Course!==undefined||t.Heading!==undefined?1:0)+(t.ModifiedDate!==undefined||t.LastUpdated!==undefined?1:0);
-      if(trip&&lc&&isFinite(lat)&&isFinite(lon)&&lat>42.5&&lat<45&&lon<-77.5&&lon>-81.5){
-        if(score[trip]===undefined||sc>score[trip]){pos[trip]={lat,lon,line:lc};score[trip]=sc;any=true;}
-      }
-    }
-  }
-  if(any){LIVE.ok=true;LIVE.updated=Date.now();LIVE.delays=delays;LIVE.byStop=byStop;LIVE.pos=pos;LIVE.sched=sched;LIVE.err="";}
-  else if(results.every(r=>r.status==="rejected")){LIVE.ok=false;LIVE.err="API unreachable";}
-  else{LIVE.ok=false;LIVE.err="no data returned";}
-  }catch(e){LIVE.ok=false;LIVE.err="refresh failed";}
-  finally{LIVE.inflight=false;render();}
-}
-
-// ════════ SCHEDULES ════════
-// LE between embedded stations → instant offline timetable (weekdays).
-// Anything else → day's journeys from the Schedule/Journey API, cached per day.
-const SCHED={key:"",status:"idle",trips:[],note:"",lastTry:0};
-const todayStr=()=>{const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`};
-
-function embeddedTrips(fromKey,toKey){
+function parseLineSchedule(j,sv){
   const out=[];
-  for(const t of LE_TRIPS){
-    const fi=t.stops.findIndex(s=>s.key===fromKey), ti=t.stops.findIndex(s=>s.key===toKey);
-    if(fi>=0&&ti>fi)out.push({id:t.id,stops:t.stops.slice(0,ti+1),approx:false});
-  }
-  return out.sort((a,b)=>a.stops[0].t-b.stops[0].t);
-}
-
-function parseJourneys(j,fromKey,toKey){
-  const cands=[];
-  (function walk(o){
-    if(!o||typeof o!=="object")return;
-    if(Array.isArray(o)){o.forEach(walk);return}
-    const dep=o.DepartureTime||o.DepartureDateTime||o.StartTime||o.DepartTime;
-    const arr=o.ArrivalTime||o.ArrivalDateTime||o.EndTime||o.ArriveTime;
-    if(dep&&arr)cands.push(o);
-    for(const k in o)walk(o[k]);
-  })(j);
-  const trips=[];
-  const seen=new Set();
-  for(const c of cands){
-    const dep=minOfDay(c.DepartureTime||c.DepartureDateTime||c.StartTime||c.DepartTime);
-    const arr=minOfDay(c.ArrivalTime||c.ArrivalDateTime||c.EndTime||c.ArriveTime);
-    if(dep==null||arr==null||arr<=dep)continue;
-    // gather leg info nested inside this candidate
-    const legs=[];
-    (function w2(o){
-      if(!o||typeof o!=="object")return;
-      if(Array.isArray(o)){o.forEach(w2);return}
-      if(o!==c&&(o.TripNumber||o.LineCode||o.TransitType!==undefined))legs.push(o);
-      for(const k in o)w2(o[k]);
-    })(c);
-    const lineCodes=[...new Set(legs.map(l=>String(l.LineCode||"").toUpperCase()).filter(Boolean))];
-    const tripNo=String((legs.find(l=>l.TripNumber)||{}).TripNumber||c.TripNumber||"").replace(/\D/g,"");
-    const transitTypes=[...new Set(legs.map(l=>String(l.TransitType||l.Type||"").toUpperCase()).filter(Boolean))];
-    const isBus=transitTypes.some(t=>t.includes("B")||t.includes("2"));
-    const transfer=new Set(legs.map(l=>l.TripNumber).filter(Boolean)).size>1;
-    const sig=dep+"|"+arr;
-    if(seen.has(sig))continue; seen.add(sig);
-    trips.push({id:tripNo||("J"+dep),stops:[{key:fromKey,t:dep},{key:toKey,t:arr}],approx:true,
-      transfer,isBus,lineOk:lineCodes.length===0||lineCodes.includes(CFG.line)});
-  }
-  // prefer direct, on-line, rail journeys; if that empties the list, relax
-  let f=trips.filter(t=>t.lineOk&&!t.transfer&&!t.isBus);
-  if(!f.length)f=trips.filter(t=>!t.isBus);
-  if(!f.length)f=trips;
-  return f.sort((a,b)=>a.stops[0].t-b.stops[0].t);
-}
-
-// merge API journeys with embedded LE stop detail when trip numbers line up:
-// authoritative times & trip list from the API, rich station-by-station data from the built-in table
-function enrichLE(trips,fromKey,toKey){
-  if(CFG.line!=="LE")return trips;
-  return trips.map(tr=>{
-    if(!/^\d+$/.test(tr.id))return tr;
-    const emb=LE_TRIPS.find(e=>e.id===tr.id);
-    if(!emb)return tr;
-    const fi=emb.stops.findIndex(s=>s.key===fromKey), ti=emb.stops.findIndex(s=>s.key===toKey);
-    if(fi<0||ti<=fi)return tr;
-    const shift=tr.stops[0].t-emb.stops[fi].t;
-    if(Math.abs(shift)>30)return tr; // timetable moved too much — trust the plain API times
-    return {id:tr.id,stops:emb.stops.slice(0,ti+1).map(s=>({key:s.key,t:s.t+shift})),approx:false,transfer:tr.transfer};
-  });
-}
-
-function embeddedAvailable(fromKey,toKey){
-  const le=LINES.LE.st.map(s=>s[0]);
-  const d=new Date().getDay();
-  return CFG.line==="LE"&&d>=1&&d<=5&&le.includes(fromKey)&&le.includes(toKey);
-}
-
-// Trips the built-in table runs in the OPPOSITE direction — a sighting of these at our
-// origin is a feed artefact, not a real departure (e.g. Union-bound 9225 seen at Pickering).
-function oppositeDirTrips(fromKey,toKey){
-  const s=new Set();
-  if(CFG.line!=="LE")return s;
-  const stns=lineStations().map(x=>x[0]);
-  const fwd=stns.indexOf(toKey)>stns.indexOf(fromKey); // our direction
-  for(const t of LE_TRIPS){
-    const a=stns.indexOf(t.stops[0].key), b=stns.indexOf(t.stops[t.stops.length-1].key);
-    if((b>a)!==fwd)s.add(t.id);
-  }
-  return s;
-}
-
-// The live feed is the authority on departure times. Where it reports a scheduled
-// departure from our origin, shift that trip to match; add trains it knows and we don't.
-function withLiveExtras(base,fromKey,toKey){
-  if(!LIVE.ok||!LIVE.sched)return base;
-  const wrongWay=oppositeDirTrips(fromKey,toKey);
-  const typical=base.length
-    ? Math.round(base.reduce((s,t)=>{const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];return s+(t.stops[t.stops.length-1].t-o.t)},0)/base.length)
-    : 44;
-  const seen=new Set();
-  let out=base.map(t=>{
-    const s=LIVE.sched[t.id];
-    if(!s||s.at!==fromKey||typeof s.min!=="number")return t;
-    seen.add(t.id);
-    const o=t.stops.find(x=>x.key===fromKey)||t.stops[0];
-    const shift=s.min-o.t;
-    if(!shift)return s.plat?{...t,liveTimed:true,plat:s.plat}:{...t,liveTimed:true};
-    if(Math.abs(shift)>90)return t; // implausible → keep built-in times
-    return {...t,stops:t.stops.map(x=>({...x,t:x.t+shift})),liveTimed:true,plat:s.plat};
-  });
-  // trip-number families actually used on this line (e.g. LE uses 9xxx) — anything
-  // outside them in the feed belongs to another line and must not be invented as ours
-  const fams=new Set(base.filter(t=>/^\d{3,4}$/.test(t.id)).map(t=>t.id.length+":"+t.id[0]));
-  for(const id in LIVE.sched){
-    if(seen.has(id)||wrongWay.has(id))continue;
-    const s=LIVE.sched[id];
-    if(!s||typeof s.min!=="number"||s.at!==fromKey)continue;
-    if(out.some(t=>t.id===id))continue;
-    if(fams.size&&/^\d{3,4}$/.test(id)&&!fams.has(id.length+":"+id[0]))continue;
-    out.push({id,stops:[{key:fromKey,t:s.min},{key:toKey,t:s.min+typical}],approx:true,liveTimed:true,plat:s.plat});
-  }
-  // a live-timed train can collide with a built-in one that no longer exists — drop the
-  // built-in duplicate when another train departs within a minute of it
-  const live=out.filter(t=>t.liveTimed);
-  if(live.length){
-    out=out.filter(t=>t.liveTimed||!live.some(l=>Math.abs((l.stops.find(x=>x.key===fromKey)||l.stops[0]).t-(t.stops.find(x=>x.key===fromKey)||t.stops[0]).t)<=1));
-  }
-  return out.sort((a,b)=>{
-    const A=(a.stops.find(x=>x.key===fromKey)||a.stops[0]).t, B=(b.stops.find(x=>x.key===fromKey)||b.stops[0]).t;
-    return A-B;
-  });
-}
-
-async function ensureSchedule(fromKey,toKey){
-  const key=`${CFG.line}|${fromKey}|${toKey}|${todayStr()}`;
-  if(SCHED.key===key&&SCHED.status!=="error")return;
-  if(SCHED.key===key&&SCHED.status==="error"&&Date.now()-SCHED.lastTry<20000)return; // throttle retries
-  SCHED.key=key;SCHED.lastTry=Date.now();
-  const ck=`go_j_${key}`;
-  if(embeddedAvailable(fromKey,toKey)){
-    // built-in weekday timetable is authoritative for Lakeshore East;
-    // the live feed fills in any train missing from it (see withLiveExtras)
-    SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="";render();
-    return;
-  }
-  try{const c=localStorage.getItem(ck);if(c){SCHED.status="ready";SCHED.trips=JSON.parse(c);SCHED.note="";render();return}}catch(e){}
-  SCHED.status="loading";SCHED.trips=[];render();
-  try{
-    const j=await fetchJson(`${API_BASE}/Schedule/Journey/${todayStr()}/${apiCode(fromKey)}/${apiCode(toKey)}/0000/300?key=${getKey()}`);
-    let trips=parseJourneys(j,fromKey,toKey);
-    const durs=trips.map(t=>t.stops[t.stops.length-1].t-t.stops[0].t).sort((a,b)=>a-b);
-    const med=durs.length?durs[Math.floor(durs.length/2)]:0;
-    if(trips.length<4||med<8||med>210)trips=[]; // implausible → discard
-    if(SCHED.key!==key)return; // user changed route meanwhile
-    if(trips.length){
-      SCHED.status="ready";SCHED.trips=trips;SCHED.note="";S.needScroll=true;
-      try{ // prune stale day-caches, then store
-        for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_j_")&&!k.includes(todayStr()))localStorage.removeItem(k)}
-        localStorage.setItem(ck,JSON.stringify(trips));
-      }catch(e){}
-    }else{throw new Error("empty")}
-  }catch(e){
-    if(SCHED.key!==key)return;
-    if(embeddedAvailable(fromKey,toKey)){
-      SCHED.status="ready";SCHED.trips=embeddedTrips(fromKey,toKey);SCHED.note="built-in times";
-    }else{
-      SCHED.status="error";SCHED.note="Couldn't load today's schedule for this route.";
+  for(const L of arr(j&&j.Lines&&j.Lines.Line)){
+    if(L.Type&&String(L.Type).trim().toUpperCase()!=="T")continue;        // trains only
+    for(const tr of arr(L.Trip)){
+      const id=String(tr.Number==null?"":tr.Number).trim();
+      const raw=arr(tr.Stops&&tr.Stops.Stop?tr.Stops.Stop:tr.Stops);
+      if(!id||raw.length<2)continue;
+      const s=raw.map(x=>({c:String(x.Code||"").trim().toUpperCase(),o:+x.Order||0,m:toSvcMin(x.Time,sv)}))
+        .filter(x=>x.c&&x.m!=null).sort((a,b)=>a.o-b.o||a.m-b.m);
+      if(s.length<2)continue;
+      let ok=true; for(let i=1;i<s.length;i++)if(s[i].m<s[i-1].m){ok=false;break}
+      if(!ok)continue;
+      out.push({id,stops:s.map(x=>[x.c,Math.round(x.m)])});
     }
   }
-  render();
+  return out;
+}
+
+async function loadTimetable(force){
+  const sv=svc(), line=CFG.line, key=line+"|"+sv.ymd, ck=`go_tt2_${line}_${sv.ymd}`;
+  if(TT.key!==key){ // new line or new day → start from the best thing we already hold
+    TT.key=key;TT.all=[];TT.src="none";TT.complete=false;TT.fetched=0;TT.err="";TT.lastTry=0;TT.label=sv.label;
+    try{
+      const c=JSON.parse(localStorage.getItem(ck)||"null");
+      if(c&&Array.isArray(c.trips)&&c.trips.length){TT.all=c.trips;TT.src="cached";TT.complete=!!c.complete;TT.fetched=c.t||0}
+    }catch(e){}
+    if(TT.src==="none"&&builtinUsable()){TT.all=builtinAll();TT.src="builtin"}
+    S.needScroll=true;
+  }
+  if(TT.inflight)return;
+  if(!force){
+    if(TT.src==="official"&&Date.now()-TT.fetched<TT_MAX_AGE)return;
+    if(Date.now()-TT.lastTry<(TT.src==="official"?60000:15000))return;       // throttle retries
+  }
+  if(typeof navigator!=="undefined"&&navigator.onLine===false){TT.err="offline";return}
+  TT.inflight=true;TT.lastTry=Date.now();
+  try{
+    const dirs=LINES[line].dirs;
+    if(!dirs)throw new Error("this line's timetable isn't in the Metrolinx feed");
+    const get=async ds=>{
+      const rs=await Promise.allSettled(ds.map(dr=>fetchJson(`${API_BASE}/Schedule/Line/${sv.ymd}/${line}/${dr}?key=${getKey()}`)));
+      let trips=[],okN=0,reached=0;
+      rs.forEach(r=>{if(r.status==="fulfilled"){reached++;const p=parseLineSchedule(r.value,sv);if(p.length){okN++;trips=trips.concat(p)}}});
+      return {trips,okN,reached};
+    };
+    let g=await get(dirs);
+    if(!g.trips.length&&g.reached){const alt=dirs[0]==="E"?["N","S"]:["E","W"];const g2=await get(alt);if(g2.trips.length)g=g2}
+    if(TT.key!==key)return;
+    const seen=new Set();
+    const trips=g.trips.filter(t=>seen.has(t.id)?false:(seen.add(t.id),true));
+    if(trips.length<2)throw new Error(g.reached?"Metrolinx returned no timetable":"can't reach Metrolinx");
+    const was=TT.src;
+    TT.all=trips;TT.src="official";TT.complete=g.okN>=2;TT.fetched=Date.now();TT.err="";
+    if(was!=="official"&&was!=="cached")S.needScroll=true;
+    try{
+      for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith("go_tt2_")&&k!==ck)localStorage.removeItem(k)}
+      localStorage.setItem(ck,JSON.stringify({t:TT.fetched,complete:TT.complete,trips}));
+    }catch(e){}
+  }catch(e){
+    if(TT.key===key)TT.err=String((e&&e.message)||e);
+  }finally{
+    TT.inflight=false;
+    if(TT.key===key)render();
+  }
+}
+
+// trips that run from → to, in order, with every stop from the train's own origin
+function pairTrips(fromKey,toKey){
+  const known=new Set(lineStations().map(s=>s[0]));
+  const pick=all=>{
+    const out=[];
+    for(const t of all){
+      const st=t.stops.filter(s=>known.has(s[0]));
+      const fi=st.findIndex(s=>s[0]===fromKey), ti=st.findIndex(s=>s[0]===toKey);
+      if(fi>=0&&ti>fi)out.push({id:t.id,o:st[fi][1],stops:st.slice(0,ti+1).map(s=>({key:s[0],t:s[1]}))});
+    }
+    return out.sort((a,b)=>a.o-b.o);
+  };
+  let trips=pick(TT.all), src=TT.src;
+  const sure=(src==="official"||src==="cached")&&TT.complete;   // Metrolinx answered for both directions
+  if(!trips.length&&!sure&&src!=="builtin"&&builtinUsable()){
+    const b=pick(builtinAll()); if(b.length){trips=b;src="builtin"}
+  }
+  return {trips,src,sure};
+}
+
+// ════════ LIVE — departures, delays, platforms, train positions ════════
+const LIVE={ok:false,updated:0,ns:{},ub:{},veh:{},err:"connecting…",inflight:false,lastAttempt:0,started:0,seq:0};
+function resetLive(){LIVE.ok=false;LIVE.ns={};LIVE.ub={};LIVE.veh={};LIVE.err="connecting…";LIVE.updated=0}
+
+async function refreshLive(force){
+  if(LIVE.inflight&&!force&&Date.now()-LIVE.started<25000)return;   // a stuck request can't block forever
+  const token=++LIVE.seq;
+  LIVE.inflight=true;LIVE.started=LIVE.lastAttempt=Date.now();
+  const line=CFG.line,home=CFG.home,dest=CFG.dest,sv=svc();
+  const stale=()=>token!==LIVE.seq||line!==CFG.line||home!==CFG.home||dest!==CFG.dest;
+  try{
+    if(typeof navigator!=="undefined"&&navigator.onLine===false){LIVE.ok=false;LIVE.err="offline";return}
+    const key=getKey();
+    const union=home==="UN"||dest==="UN";
+    const results=await Promise.allSettled([
+      fetchJson(`${API_BASE}/Stop/NextService/${home}?key=${key}`),
+      fetchJson(`${API_BASE}/Stop/NextService/${dest}?key=${key}`),
+      fetchJson(`${API_BASE}/ServiceataGlance/Trains/All?key=${key}`),
+      union?fetchJson(`${API_BASE}/ServiceUpdate/UnionDepartures/All?key=${key}`):Promise.reject(new Error("skip")),
+    ]);
+    if(stale())return;
+    const ns={},ub={},veh={};
+    // next departures at each of our two stations — scheduled time, live time, platform
+    [home,dest].forEach((stopKey,ri)=>{
+      const res=results[ri]; if(res.status!=="fulfilled")return;
+      const m=ns[stopKey]={};
+      for(const L of arr(res.value&&res.value.NextService&&res.value.NextService.Lines)){
+        if(String(L.LineCode||"").trim().toUpperCase()!==line)continue;                 // our line only
+        if(L.ServiceType&&String(L.ServiceType).trim().toUpperCase()!=="T")continue;    // trains only
+        const trip=String(L.TripNumber||"").replace(/\D/g,""); if(!trip)continue;
+        const sch=toSvcMin(L.ScheduledDepartureTime,sv); if(sch==null)continue;
+        let comp=toSvcMin(L.ComputedDepartureTime,sv); if(comp==null||comp-sch<-10||comp-sch>240)comp=sch;
+        const dir=String(L.DirectionName||"").split(" - ").pop();
+        m[trip]={sch:Math.round(sch),comp,plat:String(L.ActualPlatform||L.ScheduledPlatform||"").trim(),term:stnByName(dir)};
+      }
+    });
+    // Union departure board — the list gotracker.ca's Union page shows
+    if(results[3].status==="fulfilled"){
+      const want=norm(LINES[line].name);
+      for(const r of arr(results[3].value&&results[3].value.AllDepartures&&results[3].value.AllDepartures.Trip)){
+        if(norm(r.Service)!==want)continue;                                              // our line only
+        if(r.ServiceType&&String(r.ServiceType).trim().toUpperCase()!=="T")continue;
+        const trip=String(r.TripNumber||"").replace(/\D/g,""); if(!trip)continue;
+        const mn=toSvcMin(r.Time,sv); if(mn==null)continue;
+        const plat=String(r.Platform||"").trim();
+        ub[trip]={min:Math.round(mn),plat:plat==="-"?"":plat,info:String(r.Info||"").split("/")[0].trim(),
+          stops:arr(r.Stops).map(s=>stnByName(s&&s.Name)).filter(Boolean)};
+      }
+    }
+    // every train on the network right now — position and delay
+    if(results[2].status==="fulfilled"){
+      const v=results[2].value, serverNow=parseApiTime(v&&v.Metadata&&v.Metadata.TimeStamp);
+      for(const t of arr(v&&v.Trips&&v.Trips.Trip)){
+        if(String(t.LineCode||"").trim().toUpperCase()!==line)continue;
+        const trip=String(t.TripNumber||"").replace(/\D/g,""); if(!trip)continue;
+        const mod=parseApiTime(t.ModifiedDate);
+        if(serverNow&&mod&&serverNow-mod>10*60000)continue;                              // stale report
+        const lat=+t.Latitude,lon=+t.Longitude,ds=+t.DelaySeconds;
+        const code=x=>String(x||"").trim().toUpperCase();
+        veh[trip]={lat:isFinite(lat)&&lat>42&&lat<45.5?lat:null,lon:isFinite(lon)&&lon<-77&&lon>-82?lon:null,
+          delay:isFinite(ds)&&ds>-600&&ds<3*3600?Math.round(ds/60):undefined,
+          at:code(t.AtStationCode),next:code(t.NextStopCode),prev:code(t.PrevStopCode)};
+      }
+    }
+    const reached=results.filter(r=>r.status==="fulfilled").length;
+    if(reached){LIVE.ok=true;LIVE.updated=Date.now();LIVE.ns=ns;LIVE.ub=ub;LIVE.veh=veh;LIVE.err=""}
+    else{LIVE.ok=false;LIVE.err="can't reach Metrolinx"}
+  }catch(e){if(!stale()){LIVE.ok=false;LIVE.err="refresh failed"}}
+  finally{if(token===LIVE.seq){LIVE.inflight=false;render()}}
+}
+
+// Combine the timetable with what the live feed says about departures from our origin.
+function buildTrips(fromKey,toKey,now,useLive){
+  const P=pairTrips(fromKey,toKey);
+  let list=P.trips.map(t=>({id:t.id,stops:t.stops,src:P.src}));
+  if(!useLive)return {list,src:P.src,sure:P.sure};
+  const nsO=LIVE.ns[fromKey]||{}, ubO=fromKey==="UN"?LIVE.ub:{};
+  const oT=t=>(t.stops.find(x=>x.key===fromKey)||t.stops[0]).t;
+  const trusted=P.src==="official"||P.src==="cached";
+  const stn=lineStations().map(s=>s[0]), fI=stn.indexOf(fromKey), dI=stn.indexOf(toKey);
+  // 1. where the live feed reports this train's scheduled departure, that time wins
+  list=list.map(t=>{
+    const n=nsO[t.id],u=ubO[t.id];
+    const liveSch=n?n.sch:u?u.min:null;
+    if(liveSch==null)return t;
+    const shift=liveSch-oT(t);
+    if(trusted){ if(Math.abs(shift)>60)return t }            // today's timetable disagrees wildly → not the same run
+    else if(n&&n.term){                                      // old table: the train must be heading our way
+      const ti=stn.indexOf(n.term);
+      if(ti<0||(ti-fI)*(dI-fI)<=0)return t;
+    }
+    return {...t,stops:shift?t.stops.map(x=>({...x,t:x.t+shift})):t.stops,confirmed:true};
+  });
+  // 2. only when today's Metrolinx timetable could NOT be loaded: let the live board correct the old table
+  if(!trusted){
+    const st=stn, fi=fI, di=dI;
+    const have=new Set(list.map(t=>t.id));
+    const other=new Set(TT.all.map(t=>t.id)); if(builtinUsable())builtinAll().forEach(t=>other.add(t.id));
+    const durs=list.map(t=>t.stops[t.stops.length-1].t-oT(t)).sort((a,b)=>a-b);
+    const typical=durs.length?durs[Math.floor(durs.length/2)]:44;
+    const add=(id,min)=>{have.add(id);list.push({id,stops:[{key:fromKey,t:min},{key:toKey,t:min+typical}],approx:true,confirmed:true,src:"live"})};
+    for(const id in nsO){
+      if(have.has(id)||other.has(id))continue;               // known train that doesn't serve this pair
+      const n=nsO[id], ti=n.term?st.indexOf(n.term):-1;
+      if(ti<0||(ti-fi)*(di-fi)<=0||Math.abs(ti-fi)<Math.abs(di-fi))continue;   // must run from → to
+      add(id,n.sch);
+    }
+    for(const id in ubO){
+      if(have.has(id)||other.has(id))continue;
+      if(!ubO[id].stops.includes(toKey))continue;            // must call at our destination
+      add(id,ubO[id].min);
+    }
+    // inside the window the live board covers, show only what the live board lists
+    const conf=list.filter(t=>t.confirmed&&oT(t)>=now-1).map(oT);
+    if(conf.length>=2){
+      const end=Math.max(...conf);
+      list=list.filter(t=>t.confirmed||oT(t)<=now||oT(t)>end);
+    }
+    list.sort((a,b)=>oT(a)-oT(b));
+  }
+  return {list,src:P.src,sure:P.sure};
+}
+function liveFor(id,fromKey){
+  const n=(LIVE.ns[fromKey]||{})[id]||null, u=fromKey==="UN"?(LIVE.ub[id]||null):null, v=LIVE.veh[id]||null;
+  let delay;
+  if(n){delay=Math.round(n.comp-n.sch)}
+  else if(v&&v.delay!==undefined)delay=v.delay;
+  return {delay,veh:v&&v.lat!=null&&v.lon!=null?v:null,plat:(n&&n.plat)||(u&&u.plat)||"",info:u?u.info:""};
 }
 
 // ════════ geometry ════════
@@ -552,38 +520,52 @@ const fmt12=m=>{const h=Math.floor(m/60)%24,mm=Math.round(m%60);return `${h%12==
 const ampm=m=>Math.floor(m/60)%24<12?"AM":"PM";
 const cd=mins=>{const w=Math.floor(mins),s=Math.floor((mins-w)*60);return `${w}:${pad(s)}`};
 
-function analyze(trip,fromKey,toKey,now,delayMin,gps){
+function analyze(trip,fromKey,toKey,now,delayMin,veh){
   const dl=delayMin||0;
   const base=displayStops(trip,fromKey,toKey);
   const st=base.map(s=>({key:s.key,t:s.t+dl,sched:s.t,approx:!!s.approx}));
-  const first=st[0],last=st[st.length-1];
-  const origin=st.find(s=>s.key===fromKey)||first;
+  const first=st[0],last=st[st.length-1],n=st.length;
+  const oi=Math.max(0,st.findIndex(s=>s.key===fromKey)), origin=st[oi];
+  const keys=st.map(s=>s.key);
   let phase,pos,segIdx=-1,segFrac=0,liveGps=false;
-  if(gps){
-    const keys=st.map(s=>s.key);
-    const pr=geoProject(keys,gps.lat,gps.lon);
-    const tAtGps=pr.segIdx<st.length-1?st[pr.segIdx].t+pr.segT*(st[pr.segIdx+1].t-st[pr.segIdx].t):last.t;
-    if(pr.km<6&&Math.abs(tAtGps-now)<=20){
-      liveGps=true;segIdx=pr.segIdx;segFrac=pr.segT;
-      phase=now>=last.t&&(segIdx>=st.length-2&&segFrac>.95)?"done":"moving";
-      pos=segFrac<.12?`At ${nameOf(keys[segIdx])}`:segFrac>.85?`Approaching ${nameOf(keys[segIdx+1])}`:`Between ${nameOf(keys[segIdx])} and ${nameOf(keys[segIdx+1])}`;
-      pos+=" · GPS";
+  if(veh){
+    const ai=veh.at?keys.indexOf(veh.at):-1, ni=veh.next?keys.indexOf(veh.next):-1;
+    if(ai>=0){                                   // Metrolinx says it is standing at this station
+      liveGps=true;
+      if(ai>=n-1){segIdx=n-2;segFrac=1}else{segIdx=ai;segFrac=0}
+    }else if(ni>0){                              // between stations, heading for keys[ni]
+      liveGps=true;segIdx=ni-1;
+      const pr=geoProject([keys[ni-1],keys[ni]],veh.lat,veh.lon);
+      segFrac=pr.km<8?Math.min(.97,Math.max(.03,pr.segT)):.5;
+    }else if(ni<0&&!veh.next){                   // no stop codes reported → place by GPS, if it is believable
+      const pr=geoProject(keys,veh.lat,veh.lon);
+      const tAt=pr.segIdx<n-1?st[pr.segIdx].t+pr.segT*(st[pr.segIdx+1].t-st[pr.segIdx].t):last.t;
+      if(pr.km<6&&Math.abs(tAt-now)<=20){liveGps=true;segIdx=pr.segIdx;segFrac=pr.segT}
+    }
+    if(liveGps){
+      phase=segIdx>=n-2&&segFrac>=1?"done":"moving";
+      pos=(segFrac<.12?`At ${nameOf(keys[segIdx])}`:segFrac>.85?(segFrac>=1?`Arrived ${nameOf(keys[segIdx+1])}`:`Approaching ${nameOf(keys[segIdx+1])}`):`Between ${nameOf(keys[segIdx])} and ${nameOf(keys[segIdx+1])}`)+" · GPS";
     }
   }
   if(!liveGps){
     if(now<first.t){phase="pre";pos=`Departs ${nameOf(first.key)} ${fmt12(first.t)} ${ampm(first.t)}`}
     else if(now>=last.t){phase="done";pos=`Arrived ${nameOf(last.key)} ${fmt12(last.t)} ${ampm(last.t)}`}
     else{phase="moving";
-      for(let i=0;i<st.length-1;i++){if(now>=st[i].t&&now<st[i+1].t){segIdx=i;segFrac=(now-st[i].t)/(st[i+1].t-st[i].t);
-        pos=segFrac<.15?`At ${nameOf(st[i].key)}`:segFrac>.8?`Approaching ${nameOf(st[i+1].key)}`:`Between ${nameOf(st[i].key)} and ${nameOf(st[i+1].key)}`;break}}}
+      for(let i=0;i<n-1;i++){if(now>=st[i].t&&now<st[i+1].t){segIdx=i;segFrac=(now-st[i].t)/(st[i+1].t-st[i].t);
+        pos=segFrac<.15?`At ${nameOf(st[i].key)}`:segFrac>.8?`Approaching ${nameOf(st[i+1].key)}`:`Between ${nameOf(st[i].key)} and ${nameOf(st[i+1].key)}`;break}}
+      if(segIdx<0){segIdx=0;segFrac=0;pos=`At ${nameOf(first.key)}`}}
   }
-  const overall=phase==="pre"?0:phase==="done"?1:Math.max(0,segIdx+segFrac)/(st.length-1);
+  const overall=phase==="pre"?0:phase==="done"?1:Math.max(0,segIdx+segFrac)/(n-1);
+  // has it left OUR station? trust the train's reported position over the clock when we have it
+  let departed=now>=origin.t;
+  if(liveGps)departed=segIdx>oi||(segIdx===oi&&segFrac>=.12)||phase==="done";
   return {id:trip.id,stops:st,dep:origin.t,arr:last.t,schedDep:origin.sched,dur:last.t-origin.t,
-    minsToDep:origin.t-now,departedOrigin:now>=origin.t,phase,pos,segIdx,segFrac,overall,
+    minsToDep:origin.t-now,departedOrigin:departed,phase,pos,segIdx,segFrac,overall,
     originFrac:(last.t-first.t)>0?(origin.t-first.t)/(last.t-first.t):0,
-    delay:delayMin,liveGps,transfer:trip.transfer,approx:trip.approx,liveTimed:!!trip.liveTimed,plat:trip.plat};
+    delay:delayMin,liveGps,approx:trip.approx,confirmed:!!trip.confirmed,src:trip.src,plat:trip.plat||"",info:trip.info||""};
 }
 function chip(t){
+  if(!t.departedOrigin&&/^proceed/i.test(t.info||""))return["BOARDING","var(--amber)","#1A1405"];
   if(!t.departedOrigin&&t.minsToDep<=4&&t.phase==="moving")return["BOARDING","var(--amber)","#1A1405"];
   if(!t.departedOrigin&&t.phase==="moving")return["EN ROUTE","#1E5C3A","#CFF3D6"];
   if(!t.departedOrigin)return["SCHEDULED","#E4E9E2","var(--sub)"];
@@ -609,27 +591,28 @@ function render(force){
   // don't re-render while a dropdown is open — it would dismiss the picker
   const ae=document.activeElement;
   if(!force&&ae&&ae.tagName==="SELECT"&&app.contains(ae))return;
-  if(S.sim===null&&!LIVE.inflight&&Date.now()-(LIVE.lastAttempt||0)>(LIVE.ok?31000:12000))refreshLive();
+  // keep checking the source: live board every 20s (10s while failing), timetable every 15 min
+  if(S.sim===null&&Date.now()-(LIVE.lastAttempt||0)>(LIVE.ok?20000:10000))refreshLive();
+  loadTimetable();
 
   const d=new Date();
-  const liveNow=d.getHours()*60+d.getMinutes()+d.getSeconds()/60;
-  const now=S.sim!==null?S.sim:liveNow;
-  const useLive=S.sim===null&&LIVE.ok;
+  const sv=svc();
+  const now=S.sim!==null?S.sim:sv.now;
+  const liveAge=LIVE.updated?Math.round((Date.now()-LIVE.updated)/1000):null;
+  const useLive=S.sim===null&&LIVE.ok&&liveAge!==null&&liveAge<180;   // never apply a live board older than 3 min
   const autoMode=now<720?"OUT":"BACK";
   const mode=S.override||autoMode;
   const out=mode==="OUT";
   const fromKey=out?CFG.home:CFG.dest, toKey=out?CFG.dest:CFG.home;
   const fromName=nameOf(fromKey), toName=nameOf(toKey);
 
-  ensureSchedule(fromKey,toKey);
-
-  const trips=withLiveExtras(SCHED.status==="ready"?SCHED.trips:[],fromKey,toKey)
-    .map(t=>{
-      const dm=useLive?((LIVE.byStop&&LIVE.byStop[fromKey]&&LIVE.byStop[fromKey][t.id]!==undefined)?LIVE.byStop[fromKey][t.id]:LIVE.delays[t.id]):undefined;
-      const gp=useLive&&LIVE.pos[t.id]&&LIVE.pos[t.id].line===CFG.line?LIVE.pos[t.id]:undefined;
-      return analyze(t,fromKey,toKey,now,dm,gp);
-    })
-    .sort((a,b)=>a.dep-b.dep);
+  const B=buildTrips(fromKey,toKey,now,useLive);
+  const trips=B.list.map(t=>{
+      const lv=useLive?liveFor(t.id,fromKey):{};
+      return analyze({...t,plat:lv.plat,info:lv.info},fromKey,toKey,now,lv.delay,lv.veh);
+    }).sort((a,b)=>a.schedDep-b.schedDep||a.dep-b.dep);
+  const trusted=B.src==="official"||B.src==="cached";
+  const status=trips.length?"ready":(TT.inflight||TT.src==="none"&&!TT.err)?"loading":(trusted&&B.sure)?"none":"error";
   const next=trips.find(t=>!t.departedOrigin)||null;
   const departed=trips.filter(t=>t.departedOrigin);
   const lastDeparted=departed.length?departed[departed.length-1]:null;
@@ -640,8 +623,18 @@ function render(force){
 
   let pill,pillColor;
   if(S.sim!==null){pill="PREVIEW";pillColor="var(--amber)"}
-  else if(LIVE.ok){const age=Math.round((Date.now()-LIVE.updated)/1000);pill=`LIVE · ${age<5?"now":age+"s"}`;pillColor="#4ADE80"}
-  else{pill="SCHEDULE";pillColor="#E8B84B"}
+  else if(LIVE.ok&&liveAge<75){pill=`LIVE · ${liveAge<5?"now":liveAge+"s"}`;pillColor="#4ADE80"}
+  else if(LIVE.ok){pill=`STALE · ${liveAge<120?liveAge+"s":Math.round(liveAge/60)+"m"}`;pillColor="#E8B84B"}
+  else{pill="NO LIVE";pillColor="#FF8A6A"}
+
+  // where the times on screen come from, and when that source was last checked
+  const hm=ms=>new Date(ms).toLocaleTimeString("en-CA",{hour:"numeric",minute:"2-digit"});
+  const retry=`<span data-action="retrysched" style="text-decoration:underline;cursor:pointer">Check now</span>`;
+  let srcHtml="";
+  if(S.sim!==null)srcHtml=`<div class="srcline">Preview of a different time of day — not live.</div>`;
+  else if(B.src==="official")srcHtml=`<div class="srcline ok">✓ Metrolinx timetable for ${esc(TT.label)} · checked ${hm(TT.fetched)}${!LIVE.ok?` · live board: ${esc(LIVE.err)}`:""}</div>`;
+  else if(B.src==="cached")srcHtml=`<div class="srcline ${TT.err?"warn":"ok"}">Metrolinx timetable for ${esc(TT.label)} · last checked ${hm(TT.fetched)} · ${TT.inflight||!TT.err?"checking again…":"couldn't re-check — "+retry}</div>`;
+  else if(B.src==="builtin")srcHtml=`<div class="srcline bad">⚠ ${TT.inflight&&!TT.err?"Checking Metrolinx for today's timetable… until it answers, times":"Can't load today's timetable from Metrolinx. Times"} marked <b>unverified</b> come from an old built-in schedule and may be wrong.${TT.err?" "+retry:""}</div>`;
 
   const movingPast=departed.filter(t=>t.phase==="moving");
   const hero=(next&&next.phase==="moving"&&next)||(movingPast.length&&movingPast[movingPast.length-1])||next||null;
@@ -658,23 +651,24 @@ function render(force){
   const selTrip=S.openId!==null?trips.find(t=>t.id===S.openId):null;
 
   let heroHtml;
-  if(SCHED.status==="loading"&&!trips.length){heroHtml=`<div class="empty">Loading today's ${esc(LINES[CFG.line].name)} schedule…</div>`}
-  else if(SCHED.status==="error"&&!trips.length){heroHtml=`<div class="empty">${esc(SCHED.note)} <span data-action="retrysched" style="text-decoration:underline;cursor:pointer">Retry</span></div>`}
+  if(status==="loading"){heroHtml=`<div class="empty">Loading today's ${esc(LINES[CFG.line].name)} timetable from Metrolinx…</div>`}
+  else if(status==="error"){heroHtml=`<div class="empty">Couldn't load today's timetable from Metrolinx (${esc(TT.err||"no answer")}). ${retry}</div>`}
+  else if(status==="none"){heroHtml=`<div class="empty">Metrolinx lists no direct trains from ${esc(fromName)} to ${esc(toName)} for ${esc(TT.label)}.</div>`}
   else if(next){
     const delayed=next.delay!==undefined&&next.delay>=2;
     heroHtml=`
-      <div class="eyebrow">NEXT DEPARTURE FROM ${esc(fromName).toUpperCase()}${/^\d+$/.test(next.id)?` · TRAIN ${next.id}`:""}${next.delay!==undefined?(delayed?` · <span style="color:#FF8A6A">DELAYED ${next.delay} MIN</span>`:` · <span style="color:#7FD89A">ON TIME</span>`):""}</div>
+      <div class="eyebrow">NEXT DEPARTURE FROM ${esc(fromName).toUpperCase()}${/^\d+$/.test(next.id)?` · TRAIN ${next.id}`:""}${next.delay!==undefined?(delayed?` · <span style="color:#FF8A6A">DELAYED ${next.delay} MIN</span>`:` · <span style="color:#7FD89A">ON TIME</span>`):""}${next.confirmed?"":(next.src==="builtin"?` · <span style="color:#FF8A6A">UNVERIFIED</span>`:` · <span style="color:#9DB7A0">SCHEDULED</span>`)}</div>
       <div style="display:flex;align-items:baseline;gap:12px;margin-top:4px;flex-wrap:wrap">
         <span class="count">${next.minsToDep>0?cd(next.minsToDep):"NOW"}</span>
         ${next.minsToDep>0?'<span style="color:#9DB7A0;font-size:12px;font-weight:600">until departure</span>':""}
       </div>
-      <div class="heroline">Departs <b>${fmt12(next.dep)} ${ampm(next.dep)}</b>${delayed?` <s style="color:#7E957F;font-size:12px">${fmt12(next.schedDep)}</s>`:""} · Arrives ${esc(toName)} <b>${fmt12(next.arr)} ${ampm(next.arr)}</b></div>
+      <div class="heroline">${delayed?`Scheduled ${fmt12(next.schedDep)} · now <b>${fmt12(next.dep)} ${ampm(next.dep)}</b>`:`Departs <b>${fmt12(next.schedDep)} ${ampm(next.schedDep)}</b>`} · Arrives ${esc(toName)} <b>${fmt12(next.arr)} ${ampm(next.arr)}</b></div>
       <div class="heropos" style="color:${next.phase==="pre"?"#9DB7A0":"var(--led)"}">▸ ${esc(next.pos)}</div>`;
   } else {
     heroHtml=`<div class="empty">No more departures today from ${esc(fromName)} toward ${esc(toName)}.</div>`;
   }
 
-  const stripHtml=SCHED.status!=="ready"?"":`
+  const stripHtml=status!=="ready"?"":`
     <div class="strip">
       <div class="track"></div>
       ${corridor.map((c,i)=>{
@@ -708,7 +702,7 @@ function render(force){
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="verstamp">v13</span>
+          <span class="verstamp">v14</span>
           <span class="miniclock">${clock}</span>
           <div class="live" style="color:${pillColor}"><span class="dot" style="background:${pillColor}"></span>${pill}</div>
         </div>
@@ -721,7 +715,7 @@ function render(force){
 
       <div class="hero">${heroHtml}</div>
       ${stripHtml}
-      ${!LIVE.ok&&S.sim===null&&LIVE.err?`<div style="color:#8FA890;font-size:10.5px;margin-top:10px;text-align:center">Live feed: ${esc(LIVE.err)} — showing scheduled times. <span data-action="retry" style="text-decoration:underline;cursor:pointer">Retry</span></div>`:""}
+      ${srcHtml}
     </div>
 
     <div class="tabs">
@@ -767,7 +761,7 @@ function render(force){
             </div>
           </div>${conn}`;
         }).join("")}</div>
-        ${t.approx?`<div style="font-size:10px;color:var(--sub);margin-top:8px">≈ intermediate times estimated by distance — origin &amp; arrival times are official</div>`:""}
+        ${t.approx?`<div style="font-size:10px;color:var(--sub);margin-top:8px">≈ arrival and intermediate times are estimates — only the departure time is confirmed by the live board</div>`:""}
       </div>`;
     }
 
@@ -777,7 +771,7 @@ function render(force){
     return histDivider+`<div class="trip ${open?"open":isNext?"next":""} ${!open&&t.departedOrigin&&t.phase==="done"?"faded":""}" data-action="open" data-id="${esc(t.id)}" role="button" tabindex="0">
       <div class="row" style="align-items:flex-start">
         <div style="display:flex;align-items:center;gap:13px">
-          <div><div class="t-time">${fmt12(t.dep)}<small>${ampm(t.dep)}</small></div><div class="t-sub">dep ${esc(fromName)}</div></div>
+          <div><div class="t-time">${fmt12(t.schedDep)}<small>${ampm(t.schedDep)}</small></div><div class="t-sub"${t.delay>=2&&t.phase!=="done"?` style="color:var(--red)">now ${fmt12(t.dep)} ${ampm(t.dep)}`:`>dep ${esc(fromName)}`}</div></div>
           <div style="color:var(--line);font-size:15px">→</div>
           <div><div class="t-time" style="color:var(--green-dk)">${fmt12(t.arr)}<small>${ampm(t.arr)}</small></div><div class="t-sub">arr ${esc(toName)}</div></div>
         </div>
@@ -788,7 +782,7 @@ function render(force){
         </div>
       </div>
       <div class="t-foot">
-        <span style="color:var(--sub)">${/^\d+$/.test(t.id)?`Train <b style="color:var(--ink)">${t.id}</b> · `:""}${t.dur} min${t.transfer?" · transfer":""}${t.plat?` · Pltf <b style="color:var(--ink)">${esc(t.plat)}</b>`:""}${t.liveTimed?' · <b style="color:var(--green-dk)">LIVE</b>':""}${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
+        <span style="color:var(--sub)">${/^\d+$/.test(t.id)?`Train <b style="color:var(--ink)">${t.id}</b> · `:""}${t.dur} min${t.plat?` · Pltf <b style="color:var(--ink)">${esc(t.plat)}</b>`:""}${t.confirmed?' · <b style="color:var(--green-dk)">LIVE</b>':(t.src==="builtin"?' · <b style="color:#B4531F">unverified</b>':"")}${t.liveGps?' · <b style="color:var(--green-dk)">GPS</b>':""}</span>
         <span class="pos" style="color:${t.departedOrigin?"var(--sub)":"var(--green-dk)"}">${footRight}</span>
       </div>
       ${t.phase!=="pre"?`<div class="pbar"><div class="fill" style="width:${Math.round(t.overall*100)}%;${t.phase==="done"?"opacity:.35":""}"></div><div class="tick" style="left:${Math.round(t.originFrac*100)}%"></div>${t.phase==="moving"?`<div class="mark${t.liveGps?" gps":""}" style="left:${(t.overall*100).toFixed(1)}%"></div>`:""}</div>`:""}
@@ -802,11 +796,11 @@ function render(force){
     <div class="list">
       <div class="listhead">
         <span class="l">${esc(LINES[CFG.line].name).toUpperCase()} · DEPARTING ${esc(fromName).toUpperCase()}</span>
-        <span class="r">${SCHED.status==="ready"?trips.length+" today"+(SCHED.note?" · "+SCHED.note:" · tap to track"):""}</span>
+        <span class="r">${status==="ready"?trips.length+" today · tap to track":""}</span>
       </div>
-      ${SCHED.status==="loading"&&!trips.length?`<div class="notice">Loading today's schedule for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
-      ${SCHED.status==="error"&&!trips.length?`<div class="notice">${esc(SCHED.note)}<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Retry</button></div>`:""}
-      ${SCHED.status==="error"&&trips.length?`<div class="notice" style="padding:10px;font-size:12px">Timetable unavailable — showing ${trips.length} departure${trips.length>1?"s":""} from the live feed only.</div>`:""}
+      ${status==="loading"?`<div class="notice">Loading today's timetable for ${esc(fromName)} → ${esc(toName)}…</div>`:""}
+      ${status==="error"?`<div class="notice">Couldn't load today's timetable from Metrolinx (${esc(TT.err||"no answer")}).<br><button class="pastbtn" data-action="retrysched" style="margin-top:8px">Check now</button></div>`:""}
+      ${status==="none"?`<div class="notice">Metrolinx lists no direct trains from ${esc(fromName)} to ${esc(toName)} for ${esc(TT.label)}.</div>`:""}
       ${rows}
     </div>
 
@@ -819,11 +813,11 @@ function render(force){
         ${S.sim!==null?'<button data-action="live" style="border:none;background:var(--amber);color:#1A1405">● Back to live</button>':""}
         <button data-action="key" style="border:1px solid var(--line);background:var(--card);color:var(--sub)">⚙ API key${usingDemo?" (demo)":""}</button>
       </div>
-      <p class="disclaimer">Build v13 (2026-08-12). Your line, home station &amp; destination are saved on this device and restored every launch. Live departures, delays &amp; train GPS from the Metrolinx GO Open Data API every 30s; Lakeshore East weekday schedule built in for offline use; other routes load their daily timetable from the API.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
+      <p class="disclaimer">Build v14 (2026-11-10). Every time on screen comes from Metrolinx's GO Open Data feed (the one behind gotracker.ca): today's timetable is re-checked on every launch and every 15 minutes; departures, delays, platforms and train positions every 20 seconds. If Metrolinx can't be reached the app says so and marks any fallback times <b>unverified</b>.${usingDemo?" Using the shared demo key — register a free key at api.openmetrolinx.com and add it via ⚙.":""}</p>
     </div>`;
 
   // anchor: open the list at the last departed train, history hidden above
-  if(S.needScroll&&SCHED.status==="ready"&&anchorId!==null){
+  if(S.needScroll&&status==="ready"&&anchorId!==null){
     const el=list.querySelector(`.trip[data-id="${(window.CSS&&CSS.escape)?CSS.escape(anchorId):anchorId}"]`);
     list.scrollTop=el?Math.max(0,el.offsetTop-10):0;
     S.needScroll=false;
@@ -837,24 +831,23 @@ app.addEventListener("change",e=>{
   const el=e.target.closest("[data-action]");
   if(!el)return;
   const a=el.dataset.action;
-  if(a==="line"){CFG.line=el.value;ensureCfgValid();saveCfg();S.openId=null;S.override=null;S.needScroll=true;render(true);refreshLive()}
-  else if(a==="home"){if(el.value===CFG.dest)CFG.dest=CFG.home;CFG.home=el.value;saveCfg();S.openId=null;S.needScroll=true;render(true);refreshLive()}
-  else if(a==="dest"){if(el.value===CFG.home)CFG.home=CFG.dest;CFG.dest=el.value;saveCfg();S.openId=null;S.needScroll=true;render(true);refreshLive()}
+  if(a==="line"){CFG.line=el.value;ensureCfgValid();saveCfg();S.openId=null;S.override=null;S.needScroll=true;resetLive();render(true);refreshLive(true)}
+  else if(a==="home"){if(el.value===CFG.dest)CFG.dest=CFG.home;CFG.home=el.value;saveCfg();S.openId=null;S.needScroll=true;resetLive();render(true);refreshLive(true)}
+  else if(a==="dest"){if(el.value===CFG.home)CFG.home=CFG.dest;CFG.dest=el.value;saveCfg();S.openId=null;S.needScroll=true;resetLive();render(true);refreshLive(true)}
 });
 app.addEventListener("click",e=>{
   const el=e.target.closest("[data-action]");
   if(!el||el.tagName==="SELECT")return;
   const a=el.dataset.action;
-  if(a==="tab"){const m=el.dataset.mode;const d=new Date();const nw=S.sim!==null?S.sim:d.getHours()*60+d.getMinutes();const auto=nw<720?"OUT":"BACK";S.override=m===auto?null:m;S.openId=null;S.needScroll=true}
+  if(a==="tab"){const m=el.dataset.mode;const nw=S.sim!==null?S.sim:svc().now;const auto=nw<720?"OUT":"BACK";S.override=m===auto?null:m;S.openId=null;S.needScroll=true}
   else if(a==="open"){const id=el.dataset.id;S.openId=S.openId===id?null:id}
   else if(a==="sim"){S.sim=Number(el.dataset.t);S.override=el.dataset.mode;S.openId=null;S.needScroll=true}
-  else if(a==="live"){S.sim=null;S.override=null;S.openId=null;S.needScroll=true;refreshLive()}
-  else if(a==="retry"){LIVE.err="connecting…";render(true);refreshLive();return}
-  else if(a==="retrysched"){SCHED.key="";SCHED.status="idle";S.needScroll=true;render(true);return}
+  else if(a==="live"){S.sim=null;S.override=null;S.openId=null;S.needScroll=true;refreshLive(true)}
+  else if(a==="retry"||a==="retrysched"){TT.err="";loadTimetable(true);refreshLive(true);render(true);return}
   else if(a==="key"){
     const cur=getKey();
     const v=prompt("Metrolinx GO Open Data API key\n(free at api.openmetrolinx.com → Registration)\n\nLeave blank to use the shared demo key:",cur===DEMO_KEY?"":cur);
-    if(v!==null){try{v.trim()?localStorage.setItem("le_key",v.trim()):localStorage.removeItem("le_key")}catch(err){}STOPDB={};try{localStorage.removeItem("go_stops")}catch(err){}loadStops().then(refreshLive)}
+    if(v!==null){try{v.trim()?localStorage.setItem("le_key",v.trim()):localStorage.removeItem("le_key")}catch(err){}resetLive();loadTimetable(true);refreshLive(true)}
   }
   render(true);
 });
@@ -864,14 +857,24 @@ app.addEventListener("keydown",e=>{
 
 render(true);
 setInterval(render,1000);
-loadStops().then(refreshLive);
-setInterval(refreshLive,30000);
-window.addEventListener("online",()=>{loadStops().then(refreshLive)});
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshLive()});
+refreshLive(true);
+// Re-check Metrolinx the moment the app is opened or brought back to the front — iOS freezes
+// timers in the background, so whatever is on screen at that point is old by definition.
+function recheck(){
+  if(typeof document!=="undefined"&&document.hidden)return;
+  refreshLive(true);
+  loadTimetable(Date.now()-TT.fetched>5*60000);
+  render(true);
+}
+setInterval(()=>{if(S.sim===null&&Date.now()-(LIVE.lastAttempt||0)>19000)refreshLive()},5000);
+window.addEventListener("online",recheck);
+window.addEventListener("pageshow",recheck);
+window.addEventListener("focus",recheck);
+document.addEventListener("visibilitychange",recheck);
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js?v13",{updateViaCache:"none"}).then(reg=>{
+    navigator.serviceWorker.register("sw.js?v14",{updateViaCache:"none"}).then(reg=>{
       reg.update();
       // if a new worker takes over, reload once so the fresh page is shown immediately
       let reloaded=false;
